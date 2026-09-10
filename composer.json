@@ -1,0 +1,28 @@
+{
+    "name": "lava/db",
+    "description": "LavaPHP db pack — typed query builder, schema DSL, and migrations on PDO. Values are always parameter-bound.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "ext-pdo": "*",
+        "lava/core": "@dev"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.5"
+    },
+    "repositories": {
+        "lava/core": { "type": "path", "url": "../core" }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": { "Lava\\Db\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Lava\\Db\\Tests\\": "tests/" }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
