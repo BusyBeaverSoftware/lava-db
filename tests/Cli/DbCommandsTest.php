@@ -334,6 +334,65 @@ final class DbCommandsTest extends TestCase
         );
     }
 
+    /**
+     * The one path that reaches `DbConnectionFailed`: the `catch` around
+     * `new \PDO(...)`. Without it a driver failure exits 255 with a stack
+     * trace, which is the failure mode this pack exists to not have.
+     *
+     * The DSN points into a directory that does not exist, so SQLite cannot
+     * open the file and the driver raises. No network, no second driver, and
+     * the same failure on every platform.
+     */
+    public function testAConnectionThatCannotBeOpenedIsAProblemNotAStackTrace(): void
+    {
+        $result = $this->lava(['db:status', '--json'], [
+            'DATABASE_DSN' => 'sqlite:' . dirname($this->appDir) . '/no-such-dir/app.sqlite',
+        ]);
+
+        self::assertSame(ExitCode::Failure, $result->exit, $result->stderr);
+        self::assertSame(['db_connection_failed'], $result->codes());
+        self::assertSame('sqlite', $result->context('db_connection_failed', 'scheme'));
+        self::assertStringContainsString(
+            'sqlite',
+            (string) $result->problem('db_connection_failed')['problem'],
+        );
+        // The driver's own words survive the redaction: an agent needs to know
+        // the file could not be opened, not merely that something went wrong.
+        self::assertStringContainsString(
+            'unable to open database file',
+            (string) $result->problem('db_connection_failed')['problem'],
+        );
+    }
+
+    /**
+     * The redaction, asserted end to end — on the WHOLE envelope rather than on
+     * `context.dsn`.
+     *
+     * `DbConnectionFailedTest` covers the two shapes the redaction knows; what
+     * only a real invocation can show is that nothing downstream puts the
+     * unredacted DSN back: the problem's `context`, the `--json` envelope, the
+     * `fix`, or any field added later. Asserting on the one field that is
+     * redacted today is how this leaks again tomorrow.
+     */
+    public function testAConnectionFailureNeverPrintsTheCredentialItWasGiven(): void
+    {
+        $result = $this->lava(['db:status', '--json'], [
+            'DATABASE_DSN' => 'sqlite:' . dirname($this->appDir) . '/no-such-dir/app.sqlite;password=hunter2',
+        ]);
+
+        self::assertSame(['db_connection_failed'], $result->codes());
+        self::assertStringNotContainsString('hunter2', $result->stdout);
+        self::assertStringNotContainsString('hunter2', $result->stderr);
+        self::assertSame(
+            'sqlite:' . dirname($this->appDir) . '/no-such-dir/app.sqlite;password=***',
+            $result->context('db_connection_failed', 'dsn'),
+        );
+    }
+
+    /**
+     * `oops.php` is refused because the NAME is not one of ours — a migration
+     * has to be `YYYY_MM_DD_HHMMSS_snake_case` for `db:status` to order it.
+     */
     public function testABadlyNamedMigrationFileIsRefusedWithItsPath(): void
     {
         file_put_contents($this->appDir . '/app/Database/Migrations/oops.php', "<?php\n\nreturn 1;\n");
@@ -350,6 +409,37 @@ final class DbCommandsTest extends TestCase
         self::assertSame(
             $this->appDir . '/app/Database/Migrations/oops.php',
             $result->problem('invalid_migration_file')['source']['file'],
+        );
+    }
+
+    /**
+     * The OTHER half of "not a migration": the name is correct, and the file
+     * returns the wrong thing. Both end in `invalid_migration_file` and they
+     * are different mistakes with different fixes — one is "rename the file",
+     * this one is "end the file with a returned Migration" — so both are
+     * asserted through the real binary rather than inferred from a factory.
+     */
+    public function testAValidNameThatReturnsSomethingElseIsRefusedWithItsType(): void
+    {
+        file_put_contents(
+            $this->appDir . '/app/Database/Migrations/2026_01_01_000002_returns_a_number.php',
+            "<?php\n\nreturn 1;\n",
+        );
+
+        $result = $this->lava(['db:migrate', '--json']);
+
+        self::assertSame(ExitCode::Failure, $result->exit);
+        self::assertSame(['invalid_migration_file'], $result->codes());
+        self::assertSame(
+            $this->appDir . '/app/Database/Migrations/2026_01_01_000002_returns_a_number.php',
+            $result->context('invalid_migration_file', 'file'),
+        );
+        // The type, not the value — a report is written to logs, and the value
+        // could be anything the file chose to return.
+        self::assertSame('int', $result->context('invalid_migration_file', 'returned'));
+        self::assertStringContainsString(
+            'return new class extends Migration',
+            (string) $result->problem('invalid_migration_file')['fix'],
         );
     }
 
