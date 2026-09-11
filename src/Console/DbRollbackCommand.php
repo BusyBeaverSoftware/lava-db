@@ -60,7 +60,7 @@ final class DbRollbackCommand extends DbCommand
         return null;
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['rolled_back' => [], 'rolled_back_count' => 0, 'batches' => []];
     }

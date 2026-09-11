@@ -20,11 +20,12 @@ use PHPUnit\Framework\TestCase;
  * owns the commands, which is also why it can reach the fixture app that
  * enables lava/db at all.
  *
- * It is the strong half of the pair: the core test lists the four pack schemas
- * by name so that `docs/schemas/` and the command set agree, and this test
- * asserts the same set in the other direction — a schema file for a command
- * that no longer exists, or a command whose schema file was never written,
- * fails here.
+ * It is the strong half of the pair: `JsonSchemaTest` holds every command's
+ * envelope to the schema it claims — including, generically, an invocation
+ * rejected for an undeclared flag — and this test asserts the pack's command
+ * set and its schema files agree in both directions: a schema file for a
+ * command that no longer exists, or a command whose schema file was never
+ * written, fails here.
  */
 final class DbSchemaTest extends TestCase
 {
@@ -99,22 +100,27 @@ final class DbSchemaTest extends TestCase
         // this pack registers, and the schemas they claim must be exactly the
         // pack's schemas in docs/schemas/ — no missing file, no straggler for a
         // command that was renamed or removed.
+        //
+        // The claim comes off the payload rather than being rebuilt from the
+        // command name. Rebuilding it meant a second copy of two rules that
+        // belong to `Envelope::schema()`: the colon becomes a dot because a
+        // colon is illegal in a path on Windows, and the version is per
+        // command because `lava check` is at `/2`. A copy of the version would
+        // have gone on saying `/1` the day a `db:*` command was bumped.
         $listed = LavaCli::run(['list', '--json'], self::app(), ['DATABASE_DSN' => null]);
 
         $names = [];
+        $expected = [];
         foreach ($listed->data()['commands'] as $command) {
             self::assertIsArray($command);
-            if (($command['pack'] ?? null) === 'db') {
-                $names[] = (string) $command['name'];
+            if (($command['pack'] ?? null) !== 'db') {
+                continue;
             }
+            $names[] = (string) $command['name'];
+            $expected[] = (string) $command['schema'];
         }
         sort($names);
         self::assertSame(['db:migrate', 'db:new', 'db:rollback', 'db:status'], $names);
-
-        $expected = array_map(
-            static fn (string $name): string => 'lava.' . str_replace(':', '.', $name) . '/1',
-            $names,
-        );
 
         $documented = array_values(array_filter(
             EnvelopeSchemas::schemaNames(),

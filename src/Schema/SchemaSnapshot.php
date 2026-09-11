@@ -70,9 +70,18 @@ final readonly class SchemaSnapshot
     /**
      * True when two snapshots describe the same schema.
      *
-     * Order-insensitive on every level because both sides sort, so a
-     * round-trip test can compare before and after without the comparison
-     * depending on the order a catalogue happened to return rows in.
+     * `===`, so the comparison is order-sensitive — and that is safe because a
+     * snapshot is only ever compared with one read from the same dialect, where
+     * every level is built in a deterministic order: tables sorted, indexes
+     * sorted, and columns in declaration order, which is what `PRAGMA` and
+     * `information_schema` report and what makes a column's position in the
+     * shape a fact about the schema rather than about the query. So two
+     * snapshots of the same schema compare equal and two that differ anywhere
+     * do not; a round-trip test can compare before and after directly.
+     *
+     * Order-insensitive was considered and is not what this needs: it would
+     * hide a reordered column list, which for a migration that rebuilt a table
+     * is exactly the change worth seeing.
      */
     public function equals(self $other): bool
     {

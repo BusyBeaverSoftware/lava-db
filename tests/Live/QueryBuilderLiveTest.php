@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\Db\Tests\Live;
 
+use Lava\Db\Query\ConditionGroup;
 use Lava\Db\Query\Direction;
 use Lava\Db\Query\Operator;
 use Lava\Db\Schema\Table;
@@ -243,10 +244,12 @@ final class QueryBuilderLiveTest extends LiveDatabaseTestCase
      * A caller reading the chain as a sentence almost always means the second,
      * and gets the first.
      *
-     * The builder has no grouping, so the second is not expressible. That is
-     * recorded as an open finding in DECISIONS.md rather than changed here:
-     * adding a grouping API is a product decision, and this test's job is to
-     * make the current behaviour visible.
+     * That is still true, and still worth asserting: a flat chain means what
+     * AND/OR precedence says, not what the sentence looks like. What changed is
+     * that the intended reading is now EXPRESSIBLE — `whereGroup` writes the
+     * parentheses — where it used to need `whereRaw`. So the second half of this
+     * test builds it with the typed API and checks it selects the same rows as
+     * the hand-written SQL it replaced.
      */
     public function testOrBindsLooserThanAndWhichIsNotWhatAChainLooksLike(): void
     {
@@ -269,12 +272,14 @@ final class QueryBuilderLiveTest extends LiveDatabaseTestCase
         );
 
         // The reading a caller probably intended — (admin OR pro) AND verified —
-        // is a strictly smaller set, and this is what it would look like. It is
-        // spelled with `whereRaw` because the chain cannot say it.
+        // is a strictly smaller set. Before the group API this was only
+        // spellable as raw SQL; the group is the same query, typed.
         $intended = $this->db->fetch(
             $this->db->table('users')
                 ->select('email')
-                ->whereRaw('("role" = ? OR "plan" IN (?, ?))', ['admin', 'pro', 'team'])
+                ->whereGroup(function (ConditionGroup $group): void {
+                    $group->where('role', Operator::Eq, 'admin')->orWhereIn('plan', ['pro']);
+                })
                 ->whereNotNull('email_verified_at')
                 ->orderBy('email'),
         );
@@ -285,6 +290,19 @@ final class QueryBuilderLiveTest extends LiveDatabaseTestCase
             array_column($intended, 'email'),
             'the chain and the sentence it looks like select different rows',
         );
+
+        // And the group is exactly the raw fragment it replaced — asserted by
+        // running both, so "the group is the same query" is a checked claim and
+        // not a comment. Placeholder order is the thing that could differ.
+        $raw = $this->db->fetch(
+            $this->db->table('users')
+                ->select('email')
+                ->whereRaw('("role" = ? OR "plan" IN (?, ?))', ['admin', 'pro', 'team'])
+                ->whereNotNull('email_verified_at')
+                ->orderBy('email'),
+        );
+
+        self::assertSame($raw, $intended);
     }
 
     public function testOrWhereRawBindsItsOwnValuesInOrder(): void

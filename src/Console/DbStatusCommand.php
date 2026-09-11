@@ -31,7 +31,7 @@ final class DbStatusCommand extends DbCommand
         return 'Show applied and pending migrations, and any the repository remembers without a file.';
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['applied' => [], 'pending' => [], 'orphaned' => [], 'batch' => 0, 'pending_count' => 0];
     }

@@ -138,13 +138,30 @@ final class Compiler
             return '';
         }
 
+        return ' WHERE ' . $this->terms($conditions, $bindings);
+    }
+
+    /**
+     * Conditions joined left to right, WITH no surrounding parentheses — the
+     * body of a WHERE clause, and equally the body of a group.
+     *
+     * Both callers go through here rather than each writing the prefix loop,
+     * and that is the point: `AND`/`OR` placement, placeholder order and the
+     * first-term-has-no-prefix rule then have exactly one copy, so a group
+     * cannot quietly differ from a chain on any of them.
+     *
+     * @param list<Condition> $conditions
+     * @param list<int|float|string|null> $bindings appended to, in placeholder order
+     */
+    private function terms(array $conditions, array &$bindings): string
+    {
         $parts = [];
         foreach ($conditions as $index => $condition) {
             $prefix = $index === 0 ? '' : ($condition->or ? 'OR ' : 'AND ');
             $parts[] = $prefix . $this->condition($condition, $bindings);
         }
 
-        return ' WHERE ' . implode(' ', $parts);
+        return implode(' ', $parts);
     }
 
     /**
@@ -152,6 +169,15 @@ final class Compiler
      */
     private function condition(Condition $condition, array &$bindings): string
     {
+        // A group renders itself from the conditions inside it, recursively and
+        // through the same two methods — so a nested group is a group, and its
+        // columns are still quoted and its bindings still ordered by this class
+        // rather than by whoever built it. The check comes first because a
+        // group's own operator is a placeholder ({@see Condition::isGroup()}).
+        if ($condition->isGroup()) {
+            return '(' . $this->terms($condition->group, $bindings) . ')';
+        }
+
         if ($condition->operator === Operator::Raw) {
             foreach ($condition->bindings as $binding) {
                 $bindings[] = $binding;

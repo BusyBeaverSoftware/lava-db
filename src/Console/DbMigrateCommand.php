@@ -29,7 +29,7 @@ final class DbMigrateCommand extends DbCommand
         return 'Apply every pending migration as one batch.';
     }
 
-    protected function emptyPayload(Args $args): array
+    public function emptyPayload(Args $args): array
     {
         return ['applied' => [], 'applied_count' => 0, 'batch' => 0];
     }

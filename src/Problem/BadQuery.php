@@ -77,6 +77,15 @@ final class BadQuery extends LavaProblem
         );
     }
 
+    public static function emptyGroup(): self
+    {
+        return new self(
+            '->whereGroup() was given a group with no conditions in it.',
+            'Add at least one condition inside the closure — ->whereGroup(fn ($q) => $q->where(\'a\', Operator::Eq, 1)) — or drop the group and write the condition directly.',
+            [],
+        );
+    }
+
     public static function unbounded(string $verb, string $table): self
     {
         return new self(

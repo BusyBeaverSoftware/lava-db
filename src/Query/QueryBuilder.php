@@ -19,14 +19,17 @@ use Lava\Db\Problem\BadQuery;
  * ceremony: `->orderBy('created_at', Direction::Desc)` cannot be mistyped
  * into something a database accepts but means differently, which is the
  * failure mode of a string-typed builder.
+ *
+ * The `where*` family — including `whereGroup()`, which is how a parenthesised
+ * `(A OR B) AND C` is written — lives in {@see HasConditions} and is shared with
+ * {@see ConditionGroup}, the only thing a group closure is handed.
  */
 final class QueryBuilder implements Statement
 {
+    use HasConditions;
+
     /** @var list<string> */
     private array $columns = ['*'];
-
-    /** @var list<Condition> */
-    private array $conditions = [];
 
     /** @var list<Join> */
     private array $joins = [];
@@ -47,111 +50,10 @@ final class QueryBuilder implements Statement
         return $this->table;
     }
 
-    /**
-     * The conditions accumulated so far, so a caller (or a diagnostic) can
-     * read back what the chain decided without freezing the whole query.
-     *
-     * @return list<Condition>
-     */
-    public function conditions(): array
-    {
-        return $this->conditions;
-    }
-
     /** Replaces the column list. Called with no arguments, it selects `*` again. */
     public function select(string ...$columns): self
     {
         $this->columns = $columns === [] ? ['*'] : array_values($columns);
-        return $this;
-    }
-
-    public function where(string $column, Operator $operator, mixed $value): self
-    {
-        $this->conditions[] = Condition::compare(false, $column, $operator, $value);
-        return $this;
-    }
-
-    public function orWhere(string $column, Operator $operator, mixed $value): self
-    {
-        $this->conditions[] = Condition::compare(true, $column, $operator, $value);
-        return $this;
-    }
-
-    public function whereNull(string $column): self
-    {
-        $this->conditions[] = Condition::null(false, $column);
-        return $this;
-    }
-
-    public function orWhereNull(string $column): self
-    {
-        $this->conditions[] = Condition::null(true, $column);
-        return $this;
-    }
-
-    public function whereNotNull(string $column): self
-    {
-        $this->conditions[] = Condition::null(false, $column, not: true);
-        return $this;
-    }
-
-    public function orWhereNotNull(string $column): self
-    {
-        $this->conditions[] = Condition::null(true, $column, not: true);
-        return $this;
-    }
-
-    /** @param array<mixed> $values */
-    public function whereIn(string $column, array $values): self
-    {
-        $this->conditions[] = Condition::in(false, $column, $values);
-        return $this;
-    }
-
-    /** @param array<mixed> $values */
-    public function orWhereIn(string $column, array $values): self
-    {
-        $this->conditions[] = Condition::in(true, $column, $values);
-        return $this;
-    }
-
-    /** @param array<mixed> $values */
-    public function whereNotIn(string $column, array $values): self
-    {
-        $this->conditions[] = Condition::in(false, $column, $values, not: true);
-        return $this;
-    }
-
-    /** @param array<mixed> $values */
-    public function orWhereNotIn(string $column, array $values): self
-    {
-        $this->conditions[] = Condition::in(true, $column, $values, not: true);
-        return $this;
-    }
-
-    public function whereBetween(string $column, mixed $low, mixed $high): self
-    {
-        $this->conditions[] = Condition::between(false, $column, $low, $high);
-        return $this;
-    }
-
-    public function orWhereBetween(string $column, mixed $low, mixed $high): self
-    {
-        $this->conditions[] = Condition::between(true, $column, $low, $high);
-        return $this;
-    }
-
-    /** @param array<mixed> $bindings */
-    public function whereRaw(string $sql, array $bindings = []): self
-    {
-        $this->conditions[] = Condition::raw(false, $sql, $bindings);
-        return $this;
-    }
-
-    /** @param array<mixed> $bindings */
-    public function orWhereRaw(string $sql, array $bindings = []): self
-    {
-        $this->conditions[] = Condition::raw(true, $sql, $bindings);
         return $this;
     }
 
