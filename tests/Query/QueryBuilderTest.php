@@ -137,7 +137,12 @@ final class QueryBuilderTest extends TestCase
 
     public function testConditionsAreReadableWithoutFreezingTheQuery(): void
     {
-        $builder = new QueryBuilder('users')->where('id', Operator::Eq, 1)->orWhereNull('deleted_at');
+        // `(new QueryBuilder('users'))->…`, never `new QueryBuilder('users')->…`:
+        // the parentheses-free form is PHP 8.4 syntax and a PARSE error on 8.3,
+        // which the `^8.3` floor promises to support. CI's 8.3 job caught this
+        // line; nothing local could, which is why the floor is now parsed
+        // locally too (tools/php-version-check.php).
+        $builder = (new QueryBuilder('users'))->where('id', Operator::Eq, 1)->orWhereNull('deleted_at');
 
         self::assertCount(2, $builder->conditions());
         self::assertFalse($builder->conditions()[0]->or);
@@ -149,7 +154,8 @@ final class QueryBuilderTest extends TestCase
         // The builder is mutable by design, and the honest consequence is that
         // conditions survive reuse. Asserting it here means the behaviour is
         // documented rather than discovered.
-        $builder = new QueryBuilder('users')->where('id', Operator::Eq, 1);
+        // Parenthesised for the same 8.3 reason as the test above.
+        $builder = (new QueryBuilder('users'))->where('id', Operator::Eq, 1);
 
         self::assertCount(1, $builder->update(['name' => 'ada'])->conditions);
         self::assertCount(1, $builder->delete()->conditions);
