@@ -290,6 +290,34 @@ final class DbCommandsTest extends TestCase
         self::assertSame('users', $new->data()['table']);
     }
 
+    public function testNewNeverSortsBeforeTheNewestMigrationOnDisk(): void
+    {
+        // The filename is the run order. A migration already stamped later than
+        // now — a colleague's clock, or one generated a moment ago — must not be
+        // overtaken by the next one generated, or that one would run first.
+        // `db:new` reads names only, so the file's content is never loaded.
+        file_put_contents($this->appDir . '/app/Database/Migrations/2099_01_01_000000_create_future_table.php', "<?php\n");
+
+        $new = $this->lava(['db:new', 'create_after_table', '--json']);
+
+        self::assertSame(ExitCode::Ok, $new->exit, $new->stderr);
+        self::assertSame('2099_01_01_000001_create_after_table', $new->data()['name']);
+    }
+
+    public function testTwoMigrationsGeneratedBackToBackRunInTheOrderTheyWereMade(): void
+    {
+        // `checks` sorts before `monitors` by description; generated after it,
+        // inside the same second or not, it must still sort after it.
+        $first = $this->lava(['db:new', 'create_monitors_table', '--json']);
+        $second = $this->lava(['db:new', 'create_checks_table', '--json']);
+
+        self::assertSame(ExitCode::Ok, $second->exit, $second->stderr);
+        $names = [(string) $first->data()['name'], (string) $second->data()['name']];
+        $sorted = $names;
+        sort($sorted);
+        self::assertSame($names, $sorted);
+    }
+
     public function testNewWithADescriptionItCannotNameIsARefusedArgument(): void
     {
         $result = $this->lava(['db:new', '123 bad name', '--json']);

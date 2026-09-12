@@ -86,7 +86,7 @@ final class DbNewCommand extends DbCommand
             }
 
             $files = MigrationFiles::inApp($app->appDir);
-            $name = (new \DateTimeImmutable())->format('Y_m_d_His') . '_' . $description;
+            $name = self::nextStamp($files->directory(), new \DateTimeImmutable()) . '_' . $description;
             $path = $files->directory() . DIRECTORY_SEPARATOR . $name . '.php';
 
             if (is_file($path)) {
@@ -120,6 +120,41 @@ final class DbNewCommand extends DbCommand
                 $io->line("It creates the table '{$table}' and drops it in down().");
             }
         });
+    }
+
+    /**
+     * The timestamp for a new migration: now, or one second after the newest
+     * migration already in `$directory`, whichever is later.
+     *
+     * The filename is the order, so two migrations generated inside one second
+     * must not share a stamp: `create_monitors_table` then `create_checks_table`
+     * would sort `checks` first by its description, and a foreign key to a table
+     * that does not exist yet is an error on MySQL and PostgreSQL that SQLite
+     * never raises. Stepping past the newest stamp keeps generation order as run
+     * order — including when this machine's clock is behind a stamp someone else
+     * already committed.
+     *
+     * Read from the file names alone. Loading every migration to find the newest
+     * would make `db:new` fail on a half-written one, which is exactly the file
+     * someone is likely to have open.
+     */
+    private static function nextStamp(string $directory, \DateTimeImmutable $now): string
+    {
+        // Whole seconds: the stamp has no fraction, so a `now` carrying
+        // microseconds would compare later than a stamp from the same second.
+        $next = \DateTimeImmutable::createFromFormat('!Y_m_d_His', $now->format('Y_m_d_His')) ?: $now;
+
+        foreach (glob($directory . DIRECTORY_SEPARATOR . '*.php') ?: [] as $file) {
+            if (preg_match('/^(\d{4}_\d{2}_\d{2}_\d{6})_/', basename($file), $match) !== 1) {
+                continue;
+            }
+            $stamp = \DateTimeImmutable::createFromFormat('!Y_m_d_His', $match[1]);
+            if ($stamp !== false && $stamp >= $next) {
+                $next = $stamp->add(new \DateInterval('PT1S'));
+            }
+        }
+
+        return $next->format('Y_m_d_His');
     }
 
     /**
