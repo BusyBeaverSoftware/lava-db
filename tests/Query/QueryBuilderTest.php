@@ -140,8 +140,8 @@ final class QueryBuilderTest extends TestCase
         // `(new QueryBuilder('users'))->…`, never `new QueryBuilder('users')->…`:
         // the parentheses-free form is PHP 8.4 syntax and a PARSE error on 8.3,
         // which the `^8.3` floor promises to support. CI's 8.3 job caught this
-        // line; nothing local could, which is why the floor is now parsed
-        // locally too (tools/php-version-check.php).
+        // line; nothing local could, which is why the floor is now linted
+        // locally too (composer check:floor, tools/php-floor-check.php).
         $builder = (new QueryBuilder('users'))->where('id', Operator::Eq, 1)->orWhereNull('deleted_at');
 
         self::assertCount(2, $builder->conditions());
