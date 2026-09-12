@@ -21,7 +21,7 @@ final class UnsupportedDialect extends LavaProblem
     {
         $readable = $scheme === '' ? '(none)' : "'{$scheme}'";
         return new self(
-            "Unsupported database scheme {$readable}: lava/db compiles for " . implode(', ', $supported) . '.',
+            "Unsupported database scheme {$readable}: lavaphp/db compiles for " . implode(', ', $supported) . '.',
             "Set DATABASE_DSN (or the 'dsn' key of config/database.php) to 'sqlite:" . DIRECTORY_SEPARATOR
             . "path/to/app.sqlite', 'mysql:host=127.0.0.1;dbname=app', or 'pgsql:host=127.0.0.1;dbname=app'.",
             ['scheme' => $scheme, 'supported' => $supported],

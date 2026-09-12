@@ -17,7 +17,7 @@ use Lava\Db\Console\DbRollbackCommand;
 use Lava\Db\Console\DbStatusCommand;
 
 /**
- * lava/db's entry point.
+ * lavaphp/db's entry point.
  *
  * The pack registers exactly one service and four commands. The service is
  * the {@see Connection}, registered as a singleton and built from settings
@@ -40,7 +40,7 @@ final class DbModule implements Module, ProvidesCommands
     public function pack(): PackInfo
     {
         return PackInfo::of(
-            'lava/db',
+            'lavaphp/db',
             'db',
             configFiles: ['database'],
             envVars: ['DATABASE_DSN', 'DATABASE_USER', 'DATABASE_PASSWORD'],

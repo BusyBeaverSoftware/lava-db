@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
  * that enables no packs — so a pack's payloads would ship with a `schema` field
  * naming a file nobody validates. This is that validation, in the package that
  * owns the commands, which is also why it can reach the fixture app that
- * enables lava/db at all.
+ * enables lavaphp/db at all.
  *
  * It is the strong half of the pair: `JsonSchemaTest` holds every command's
  * envelope to the schema it claims — including, generically, an invocation
@@ -29,7 +29,7 @@ use PHPUnit\Framework\TestCase;
  */
 final class DbSchemaTest extends TestCase
 {
-    /** The app that enables lava/db and has migrations to report on. */
+    /** The app that enables lavaphp/db and has migrations to report on. */
     private static function app(): string
     {
         return dirname(__DIR__) . '/fixtures/apps/db-app';

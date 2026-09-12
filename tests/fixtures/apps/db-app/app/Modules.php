@@ -6,7 +6,7 @@ use Lava\Core\Modules\ModuleRef;
 
 return [
     // The pack this fixture exists to exercise, enabled unconditionally: the
-    // interesting failures in lava/db are the ones the database reports, not
+    // interesting failures in lavaphp/db are the ones the database reports, not
     // the ones the feature gate reports.
-    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lava/db', feature: 'db'),
+    ModuleRef::of(\Lava\Db\DbModule::class, package: 'lavaphp/db', feature: 'db'),
 ];

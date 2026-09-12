@@ -20,7 +20,7 @@ final class DbNotConfigured extends LavaProblem
     public static function of(): self
     {
         return new self(
-            'lava/db is enabled but no database DSN is configured, so there is nothing to connect to.',
+            'lavaphp/db is enabled but no database DSN is configured, so there is nothing to connect to.',
             "Add DATABASE_DSN to config/.env (e.g. DATABASE_DSN=sqlite:" . DIRECTORY_SEPARATOR
             . "app.sqlite), or set the 'dsn' key in config/database.php.",
             ['looked_for' => ['DATABASE_DSN', 'config/database.php: dsn']],
