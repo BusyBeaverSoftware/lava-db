@@ -32,6 +32,12 @@ final class QueryBuilderTest extends TestCase
     public static function refusals(): array
     {
         return [
+            // Quoted as an identifier, and SQLite answers an unknown quoted
+            // identifier with the string itself (Lava Notes, B5).
+            'an expression where a column goes' => [
+                static fn (QueryBuilder $q) => $q->select('id', 'COUNT(*)'),
+                'escape hatch',
+            ],
             'comparing to null' => [
                 static fn (QueryBuilder $q) => $q->where('deleted_at', Operator::Eq, null),
                 'whereNull',

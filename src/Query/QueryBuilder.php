@@ -51,8 +51,25 @@ final class QueryBuilder implements Statement
     }
 
     /** Replaces the column list. Called with no arguments, it selects `*` again. */
+    /**
+     * A column `select()` accepts: `title`, `posts.title`, `*` or `posts.*`.
+     *
+     * Anything else is refused rather than quoted. The compiler wraps every
+     * segment as an identifier, so `COUNT(*)` would become `"COUNT(*)"` — and
+     * SQLite answers an unknown double-quoted identifier with the string itself,
+     * so the count came back as the text `'COUNT(*)'` and nothing failed.
+     */
+    private const COLUMN_NAME = '/^(?:[A-Za-z_][A-Za-z0-9_]*\.)?(?:[A-Za-z_][A-Za-z0-9_]*|\*)$/';
+
+    /** @throws BadQuery for anything that is not a column name — see {@see COLUMN_NAME} */
     public function select(string ...$columns): self
     {
+        foreach ($columns as $column) {
+            if (preg_match(self::COLUMN_NAME, $column) !== 1) {
+                throw BadQuery::notAColumn($column);
+            }
+        }
+
         $this->columns = $columns === [] ? ['*'] : array_values($columns);
         return $this;
     }

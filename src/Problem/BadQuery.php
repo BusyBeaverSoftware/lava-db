@@ -23,6 +23,17 @@ use Lava\Db\Query\Operator;
  */
 final class BadQuery extends LavaProblem
 {
+    public static function notAColumn(string $column): self
+    {
+        return new self(
+            "select() was given '{$column}', which is not a column name: it would be quoted as an identifier, "
+                . 'and SQLite answers an unknown quoted identifier with the string itself instead of an error.',
+            "Pass column names only — 'title', 'posts.title', '*' or 'posts.*'. Run an aggregate or an "
+                . "expression through the escape hatch: \$db->query('SELECT COUNT(*) AS total FROM posts WHERE …', \$bindings).",
+            ['column' => $column],
+        );
+    }
+
     public static function nullComparison(string $column): self
     {
         return new self(
