@@ -19,6 +19,7 @@ use Lava\Db\Sql\SchemaCompiler;
  *
  * `table()` adds columns and indexes, and nothing else; see
  * {@see SchemaCompiler::addColumns()} for why changing a column is not offered.
+ * `dropIndex()` takes one away again.
  */
 final class Schema
 {
@@ -67,6 +68,29 @@ final class Schema
     public function dropIfExists(string $table): void
     {
         $this->connection->execute((new SchemaCompiler($this->connection->dialect()))->dropTable($table, true));
+    }
+
+    /**
+     * Drops an index by name: the one given to `index()` or `unique()`, or the
+     * one they chose, `<table>_<columns>_index` or `<table>_<columns>_unique`
+     * ({@see Index::defaultName()}).
+     *
+     * The compiler writes the statement each dialect accepts. MySQL scopes
+     * `DROP INDEX` to its table and SQLite and PostgreSQL do not, so the raw
+     * `DROP INDEX users_role_index` a migration would write works on two of
+     * the three. The index is looked up first, so a misspelt name is a problem
+     * that lists the table's indexes rather than a driver error.
+     *
+     * @throws BadSchema when the table has no index by that name
+     */
+    public function dropIndex(string $table, string $name): void
+    {
+        $indexes = array_keys(SchemaSnapshot::of($this->connection)->indexes($table));
+        if (!in_array($name, $indexes, true)) {
+            throw BadSchema::unknownIndex($table, $name, $indexes);
+        }
+
+        $this->connection->execute((new SchemaCompiler($this->connection->dialect()))->dropIndex($table, $name));
     }
 
     public function has(string $table): bool

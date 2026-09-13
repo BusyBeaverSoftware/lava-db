@@ -105,6 +105,20 @@ final class BadSchema extends LavaProblem
         );
     }
 
+    /** @param list<string> $indexes the indexes the table does have */
+    public static function unknownIndex(string $table, string $index, array $indexes): self
+    {
+        $naming = 'An index declared without a name is called <table>_<columns>_index, or <table>_<columns>_unique for unique().';
+
+        return new self(
+            "Table '{$table}' has no index named '{$index}'.",
+            ($indexes === []
+                ? "Table '{$table}' has no indexes at all; check the table name. "
+                : 'Its indexes are: ' . implode(', ', $indexes) . '. ') . $naming,
+            ['table' => $table, 'index' => $index, 'indexes' => $indexes],
+        );
+    }
+
     public static function primaryKeyOnExistingTable(string $table): self
     {
         return new self(

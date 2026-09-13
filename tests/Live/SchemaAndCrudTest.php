@@ -152,6 +152,41 @@ final class SchemaAndCrudTest extends LiveDatabaseTestCase
         }
     }
 
+    public function testAnIndexDroppedByItsDefaultNameIsGone(): void
+    {
+        $this->remember('widgets');
+
+        $this->db->schema()->create('widgets', function (Table $t): void {
+            $t->string('name');
+            $t->string('slug')->unique();
+        });
+
+        $this->db->schema()->dropIndex('widgets', 'widgets_slug_unique');
+
+        self::assertSame([], SchemaSnapshot::of($this->db)->indexes('widgets'));
+        $this->db->run($this->db->table('widgets')->insert(['name' => 'first', 'slug' => 'same']));
+        $this->db->run($this->db->table('widgets')->insert(['name' => 'second', 'slug' => 'same']));
+        self::assertCount(2, $this->db->query('SELECT name FROM widgets'), 'Without the index, the duplicate goes in.');
+    }
+
+    public function testDroppingAnIndexTheTableDoesNotHaveNamesTheIndexesItHas(): void
+    {
+        $this->remember('widgets');
+
+        $this->db->schema()->create('widgets', fn (Table $t) => $t->string('slug')->unique());
+
+        try {
+            $this->db->schema()->dropIndex('widgets', 'widgets_slug_index');
+            self::fail('Dropping an index that is not there should be refused before the DDL runs.');
+        } catch (LavaProblem $problem) {
+            self::assertSame('bad_schema', $problem->code());
+            self::assertStringContainsString("no index named 'widgets_slug_index'", $problem->getMessage());
+            self::assertStringContainsString('Its indexes are: widgets_slug_unique.', $problem->fix);
+        }
+
+        self::assertSame(['widgets_slug_unique' => true], SchemaSnapshot::of($this->db)->indexes('widgets'));
+    }
+
     public function testDroppingATableRemovesItFromTheSnapshot(): void
     {
         $this->db->schema()->create('temporary', fn (Table $t) => $t->string('name'));
