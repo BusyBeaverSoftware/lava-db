@@ -83,6 +83,7 @@ final readonly class Condition
     /** `column <op> value` — the ordinary two-sided comparison. */
     public static function compare(bool $or, string $column, Operator $operator, mixed $value): self
     {
+        ColumnName::check($column, 'where()');
         if (!$operator->isComparison()) {
             throw BadQuery::notAComparison($operator);
         }
@@ -100,6 +101,7 @@ final readonly class Condition
      */
     public static function in(bool $or, string $column, array $values, bool $not = false): self
     {
+        ColumnName::check($column, $not ? 'whereNotIn()' : 'whereIn()');
         if ($values === []) {
             throw BadQuery::emptyIn($column);
         }
@@ -113,7 +115,7 @@ final readonly class Condition
 
     public static function between(bool $or, string $column, mixed $low, mixed $high): self
     {
-        return new self($or, $column, Operator::Between, [
+        return new self($or, ColumnName::check($column, 'whereBetween()'), Operator::Between, [
             Bindings::normalize($low, $column),
             Bindings::normalize($high, $column),
         ]);
@@ -121,7 +123,12 @@ final readonly class Condition
 
     public static function null(bool $or, string $column, bool $not = false): self
     {
-        return new self($or, $column, $not ? Operator::IsNotNull : Operator::IsNull, []);
+        return new self(
+            $or,
+            ColumnName::check($column, $not ? 'whereNotNull()' : 'whereNull()'),
+            $not ? Operator::IsNotNull : Operator::IsNull,
+            [],
+        );
     }
 
     /**

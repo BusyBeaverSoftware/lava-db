@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\Db\Tests\Query;
 
 use Lava\Db\Problem\BadQuery;
+use Lava\Db\Query\ConditionGroup;
 use Lava\Db\Query\DeleteQuery;
 use Lava\Db\Query\Direction;
 use Lava\Db\Query\InsertQuery;
@@ -94,7 +95,73 @@ final class QueryBuilderTest extends TestCase
                 static fn (QueryBuilder $q) => $q->insertMany([['name' => 'ada'], ['nome' => 'grace']]),
                 'same columns',
             ],
+            // Lava Notes (R2-B1): select() refused an expression and every other
+            // column position quoted it into a string comparison instead.
+            'an expression in where()' => [
+                static fn (QueryBuilder $q) => $q->where('LOWER(email)', Operator::Eq, 'ada@example.test'),
+                'whereRaw(',
+            ],
+            'an expression in whereIn()' => [
+                static fn (QueryBuilder $q) => $q->whereIn('LOWER(email)', ['ada@example.test']),
+                'whereRaw(',
+            ],
+            'an expression in whereNull()' => [
+                static fn (QueryBuilder $q) => $q->whereNull('COALESCE(nickname, name)'),
+                'whereRaw(',
+            ],
+            'an expression in whereBetween()' => [
+                static fn (QueryBuilder $q) => $q->whereBetween('LENGTH(name)', 1, 5),
+                'whereRaw(',
+            ],
+            'an expression in a group' => [
+                static fn (QueryBuilder $q) => $q->whereGroup(
+                    static fn (ConditionGroup $group) => $group->where('LOWER(email)', Operator::Eq, 'ada@example.test'),
+                ),
+                'whereRaw(',
+            ],
+            'a star in where()' => [
+                static fn (QueryBuilder $q) => $q->where('*', Operator::Eq, 1),
+                'whereRaw(',
+            ],
+            'an expression in orderBy()' => [
+                static fn (QueryBuilder $q) => $q->orderBy('LENGTH(email)', Direction::Desc),
+                'query(',
+            ],
+            'an alias as a join table' => [
+                static fn (QueryBuilder $q) => $q->innerJoin('users AS u2', 'users.id', 'u2.id'),
+                'query(',
+            ],
+            'an expression as a join column' => [
+                static fn (QueryBuilder $q) => $q->leftJoin('posts', 'LOWER(users.email)', 'posts.email'),
+                'query(',
+            ],
+            'an expression as an insert column' => [
+                static fn (QueryBuilder $q) => $q->insert(['LOWER(email)' => 'ada@example.test']),
+                'statement(',
+            ],
+            'an expression as an update column' => [
+                static fn (QueryBuilder $q) => $q->where('id', Operator::Eq, 1)->update(['name || nickname' => 'x']),
+                'statement(',
+            ],
         ];
+    }
+
+    public function testAColumnNameOutsideAsciiOrQualifiedByASchemaIsAccepted(): void
+    {
+        // Lava Notes (R2-B8): both worked on 0.1.2, and 0.2.0's select() check
+        // refused them with an explanation that did not apply to real columns.
+        $select = (new QueryBuilder('users'))
+            ->select('prénom', 'main.users.name', 'users.*')
+            ->where('prénom', Operator::Eq, 'Ada')
+            ->innerJoin('main.posts', 'main.posts.user_id', 'users.id')
+            ->orderBy('main.users.name')
+            ->toSelect();
+
+        self::assertSame(['prénom', 'main.users.name', 'users.*'], $select->columns);
+        self::assertSame(
+            (new QueryBuilder('users'))->insert(['prénom' => 'Ada'])->rows,
+            [['prénom' => 'Ada']],
+        );
     }
 
     /**

@@ -42,6 +42,9 @@ final class UpdateQuery extends Query
         if ($values === []) {
             throw BadQuery::emptyWrite('update', $table);
         }
+        foreach (array_keys($values) as $column) {
+            ColumnName::check((string) $column, 'update()');
+        }
         if ($conditions === []) {
             throw BadQuery::unbounded('UPDATE', $table);
         }

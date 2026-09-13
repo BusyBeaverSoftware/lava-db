@@ -50,45 +50,43 @@ final class QueryBuilder implements Statement
         return $this->table;
     }
 
-    /** Replaces the column list. Called with no arguments, it selects `*` again. */
     /**
-     * A column `select()` accepts: `title`, `posts.title`, `*` or `posts.*`.
+     * Replaces the column list. Called with no arguments, it selects `*` again.
      *
-     * Anything else is refused rather than quoted. The compiler wraps every
-     * segment as an identifier, so `COUNT(*)` would become `"COUNT(*)"` — and
-     * SQLite answers an unknown double-quoted identifier with the string itself,
-     * so the count came back as the text `'COUNT(*)'` and nothing failed.
+     * Column names only — `title`, `posts.title`, `*`, `posts.*`. An aggregate
+     * or an expression is refused rather than quoted: `COUNT(*)` would become
+     * `"COUNT(*)"`, and SQLite answers that with the string itself.
+     *
+     * @throws BadQuery for anything that is not a column name — see {@see ColumnName}
      */
-    private const COLUMN_NAME = '/^(?:[A-Za-z_][A-Za-z0-9_]*\.)?(?:[A-Za-z_][A-Za-z0-9_]*|\*)$/';
-
-    /** @throws BadQuery for anything that is not a column name — see {@see COLUMN_NAME} */
     public function select(string ...$columns): self
     {
         foreach ($columns as $column) {
-            if (preg_match(self::COLUMN_NAME, $column) !== 1) {
-                throw BadQuery::notAColumn($column);
-            }
+            ColumnName::check($column, 'select()', star: true);
         }
 
         $this->columns = $columns === [] ? ['*'] : array_values($columns);
         return $this;
     }
 
+    /** @throws BadQuery when the table or either column is not a name — see {@see ColumnName} */
     public function innerJoin(string $table, string $first, string $second): self
     {
-        $this->joins[] = new Join(JoinType::Inner, $table, $first, Operator::Eq, $second);
+        $this->joins[] = self::join(JoinType::Inner, $table, $first, $second, 'innerJoin()');
         return $this;
     }
 
+    /** @throws BadQuery when the table or either column is not a name — see {@see ColumnName} */
     public function leftJoin(string $table, string $first, string $second): self
     {
-        $this->joins[] = new Join(JoinType::Left, $table, $first, Operator::Eq, $second);
+        $this->joins[] = self::join(JoinType::Left, $table, $first, $second, 'leftJoin()');
         return $this;
     }
 
+    /** @throws BadQuery when the column is not a name — see {@see ColumnName} */
     public function orderBy(string $column, Direction $direction = Direction::Asc): self
     {
-        $this->orders[] = new OrderBy($column, $direction);
+        $this->orders[] = new OrderBy(ColumnName::check($column, 'orderBy()'), $direction);
         return $this;
     }
 
@@ -159,5 +157,16 @@ final class QueryBuilder implements Statement
     public function query(): Query
     {
         return $this->toSelect();
+    }
+
+    private static function join(JoinType $type, string $table, string $first, string $second, string $call): Join
+    {
+        return new Join(
+            $type,
+            ColumnName::check($table, $call),
+            ColumnName::check($first, $call),
+            Operator::Eq,
+            ColumnName::check($second, $call),
+        );
     }
 }

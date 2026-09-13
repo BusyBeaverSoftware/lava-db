@@ -23,14 +23,21 @@ use Lava\Db\Query\Operator;
  */
 final class BadQuery extends LavaProblem
 {
-    public static function notAColumn(string $column): self
+    /**
+     * @param string $call the builder call that was given it — see {@see \Lava\Db\Query\ColumnName}
+     */
+    public static function notAColumn(string $column, string $call = 'select()'): self
     {
         return new self(
-            "select() was given '{$column}', which is not a column name: it would be quoted as an identifier, "
-                . 'and SQLite answers an unknown quoted identifier with the string itself instead of an error.',
-            "Pass column names only — 'title', 'posts.title', '*' or 'posts.*'. Run an aggregate or an "
-                . "expression through the escape hatch: \$db->query('SELECT COUNT(*) AS total FROM posts WHERE …', \$bindings).",
-            ['column' => $column],
+            "{$call} was given '{$column}', which the builder does not take as a name. It takes letters, digits "
+                . "and underscores, optionally qualified ('title', 'posts.title', 'main.posts.title'; select() "
+                . "also takes '*' and 'posts.*'), and quotes that as an identifier — so an expression or an alias "
+                . 'would be quoted too, and SQLite answers an unknown quoted identifier with the string itself.',
+            'Write anything else as SQL, through the escape hatches: '
+                . "->whereRaw('LOWER(email) = ?', [\$email]) for a condition, "
+                . "\$db->query('SELECT COUNT(*) AS total FROM posts WHERE …', \$bindings) for a read, "
+                . "and \$db->statement('UPDATE …', \$bindings) for a write.",
+            ['column' => $column, 'call' => $call],
         );
     }
 

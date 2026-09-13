@@ -46,6 +46,12 @@ final class InsertQuery extends Query
             }
             $keys = array_keys($row);
             if ($columns === null) {
+                // The first row decides the columns and every other row must match
+                // it, so checking these checks them all. A list's integer keys
+                // arrive here too, which is why each is made a string first.
+                foreach ($keys as $column) {
+                    ColumnName::check((string) $column, 'insert()');
+                }
                 $columns = $keys;
             } elseif ($keys !== $columns) {
                 throw BadQuery::mixedColumns($columns, $keys);
