@@ -87,6 +87,71 @@ final class SchemaAndCrudTest extends LiveDatabaseTestCase
         self::assertFalse($after['active']['nullable']);
     }
 
+    public function testAnIndexDeclaredWhileAddingColumnsIsCreatedAndEnforced(): void
+    {
+        $this->remember('widgets');
+
+        $this->db->schema()->create('widgets', fn (Table $t) => $t->string('name'));
+
+        // 0.2.0 ran this without a problem and created neither index, so the
+        // "unique" slug took duplicates.
+        $this->db->schema()->table('widgets', function (Table $t): void {
+            $t->string('slug')->nullable()->unique();
+            $t->index('name');
+        });
+
+        self::assertSame(
+            ['widgets_name_index' => false, 'widgets_slug_unique' => true],
+            SchemaSnapshot::of($this->db)->indexes('widgets'),
+        );
+
+        $this->db->run($this->db->table('widgets')->insert(['name' => 'first', 'slug' => 'same']));
+
+        try {
+            $this->db->run($this->db->table('widgets')->insert(['name' => 'second', 'slug' => 'same']));
+            self::fail('A column added with ->unique() accepted a duplicate.');
+        } catch (LavaProblem $problem) {
+            self::assertSame('query_failed', $problem->code());
+        }
+    }
+
+    public function testAnIndexOverAColumnTheTableWillNotHaveIsRefusedBeforeTheDdlRuns(): void
+    {
+        $this->remember('widgets');
+
+        $this->db->schema()->create('widgets', fn (Table $t) => $t->string('name'));
+
+        try {
+            $this->db->schema()->table('widgets', function (Table $t): void {
+                $t->string('colour')->nullable();
+                $t->unique('slug');
+            });
+            self::fail('An index over a column that does not exist should be refused.');
+        } catch (LavaProblem $problem) {
+            self::assertSame('bad_schema', $problem->code());
+            self::assertStringContainsString("names the column 'slug'", $problem->getMessage());
+            self::assertStringContainsString('name, colour', $problem->fix);
+        }
+
+        // The column the same closure added is not there either: nothing ran.
+        self::assertSame(['name'], array_keys(SchemaSnapshot::of($this->db)->columns('widgets')));
+    }
+
+    public function testAPrimaryKeyDeclaredOnAnExistingTableIsRefused(): void
+    {
+        $this->remember('widgets');
+
+        $this->db->schema()->create('widgets', fn (Table $t) => $t->string('name'));
+
+        try {
+            $this->db->schema()->table('widgets', fn (Table $t) => $t->primary('name'));
+            self::fail('A primary key cannot be added to an existing table, and saying nothing is a lie.');
+        } catch (LavaProblem $problem) {
+            self::assertSame('bad_schema', $problem->code());
+            self::assertStringContainsString("existing table 'widgets'", $problem->getMessage());
+        }
+    }
+
     public function testDroppingATableRemovesItFromTheSnapshot(): void
     {
         $this->db->schema()->create('temporary', fn (Table $t) => $t->string('name'));

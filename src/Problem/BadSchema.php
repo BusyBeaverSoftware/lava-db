@@ -105,6 +105,17 @@ final class BadSchema extends LavaProblem
         );
     }
 
+    public static function primaryKeyOnExistingTable(string $table): self
+    {
+        return new self(
+            "Adding a primary key to the existing table '{$table}' is not portable: "
+            . 'SQLite cannot add one without rebuilding the table.',
+            "Declare the key when the table is created, with \$schema->create(). To change an existing table's key, "
+            . 'create a new table with it, copy the rows across, drop the old table and rename the new one.',
+            ['table' => $table],
+        );
+    }
+
     public static function notALiteral(mixed $value): self
     {
         return new self(

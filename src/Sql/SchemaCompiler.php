@@ -71,6 +71,39 @@ final class SchemaCompiler
     }
 
     /**
+     * The statements `Schema::table()` runs: one `ALTER TABLE … ADD COLUMN`
+     * per column, then one `CREATE INDEX` per index — a column's own
+     * `->unique()` included.
+     *
+     * An index may cover a column the table already has, so the caller says
+     * which columns those are, and every index is checked against them plus
+     * the added ones before anything is emitted. A primary key is refused:
+     * SQLite cannot add one to an existing table at all, and a declaration
+     * this dropped would be the quiet lie 0.2.0 told about every index here.
+     *
+     * @param list<string> $existing the columns the table has before this runs
+     * @return list<Compiled>
+     * @throws BadSchema
+     */
+    public function alter(Table $table, array $existing): array
+    {
+        if ($table->primaryKey() !== []) {
+            throw BadSchema::primaryKeyOnExistingTable($table->name);
+        }
+        $this->validateIndexes($table, [
+            ...$existing,
+            ...array_map(static fn (ColumnDef $column): string => $column->name, $table->columns()),
+        ]);
+
+        $statements = $this->addColumns($table->name, $table->columns());
+        foreach ($table->indexes() as $index) {
+            $statements[] = $this->createIndex($table->name, $index);
+        }
+
+        return $statements;
+    }
+
+    /**
      * The statements that add columns to an existing table.
      *
      * `ALTER TABLE … ADD COLUMN` is the one schema change all three dialects
@@ -269,6 +302,15 @@ final class SchemaCompiler
             }
         }
 
+        $this->validateIndexes($table, $declared);
+    }
+
+    /**
+     * @param list<string> $declared every column the table will have
+     * @throws BadSchema
+     */
+    private function validateIndexes(Table $table, array $declared): void
+    {
         $indexNames = [];
         foreach ($table->indexes() as $index) {
             if (isset($indexNames[$index->name])) {

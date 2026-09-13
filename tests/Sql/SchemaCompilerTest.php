@@ -298,6 +298,46 @@ final class SchemaCompilerTest extends TestCase
         );
     }
 
+    public function testAlteringATableAddsItsColumnsThenItsIndexes(): void
+    {
+        $table = self::table('users', function (Table $t): void {
+            $t->string('slug')->nullable()->unique();
+            $t->index(['email', 'slug']);
+        });
+
+        // `email` is not in the closure: an index may cover a column the table
+        // already has, which is why the compiler is told what those are.
+        self::assertSame(
+            [
+                'ALTER TABLE "users" ADD COLUMN "slug" VARCHAR(255)',
+                'CREATE UNIQUE INDEX "users_slug_unique" ON "users" ("slug")',
+                'CREATE INDEX "users_email_slug_index" ON "users" ("email", "slug")',
+            ],
+            array_map(
+                static fn ($s): string => $s->sql,
+                self::compiler(Dialect::Sqlite)->alter($table, ['id', 'email']),
+            ),
+        );
+    }
+
+    public function testAlteringATableChecksItsIndexesAgainstTheColumnsItWillHave(): void
+    {
+        $table = self::table('users', fn (Table $t) => $t->index('nickname'));
+
+        $this->expectException(BadSchema::class);
+        $this->expectExceptionMessage("INDEX 'users_nickname_index' on table 'users' names the column 'nickname'");
+        self::compiler(Dialect::Sqlite)->alter($table, ['id', 'email']);
+    }
+
+    public function testAlteringATableRefusesAPrimaryKey(): void
+    {
+        $table = self::table('users', fn (Table $t) => $t->primary('id', 'email'));
+
+        $this->expectException(BadSchema::class);
+        $this->expectExceptionMessage("Adding a primary key to the existing table 'users'");
+        self::compiler(Dialect::Pgsql)->alter($table, ['id', 'email']);
+    }
+
     public function testAddingAReferencingColumnIsRefusedOnMysqlOnly(): void
     {
         $columns = self::table('sessions', fn (Table $t) => $t->foreignId('user_id')->references('users'))

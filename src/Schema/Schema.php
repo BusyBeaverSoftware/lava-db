@@ -17,8 +17,8 @@ use Lava\Db\Sql\SchemaCompiler;
  * of the schema layer is testable without a database, and this half has
  * almost nothing in it that could be wrong.
  *
- * `table()` adds columns and nothing else; see {@see SchemaCompiler::addColumns()}
- * for why changing a column is not offered.
+ * `table()` adds columns and indexes, and nothing else; see
+ * {@see SchemaCompiler::addColumns()} for why changing a column is not offered.
  */
 final class Schema
 {
@@ -38,7 +38,11 @@ final class Schema
     }
 
     /**
-     * Adds columns to an existing table.
+     * Adds columns and indexes to an existing table.
+     *
+     * An index may cover a column the table already has, so when there is an
+     * index to check the table's current columns are read first — and a
+     * definition with no index pays nothing for that, as with references.
      *
      * @param \Closure(Table): void $define
      */
@@ -47,8 +51,11 @@ final class Schema
         $definition = $this->describe($table, $define);
         $this->checkReferences($definition);
 
-        $this->run((new SchemaCompiler($this->connection->dialect()))
-            ->addColumns($table, $definition->columns()));
+        $existing = $definition->indexes() === []
+            ? []
+            : array_keys(SchemaSnapshot::of($this->connection)->columns($table));
+
+        $this->run((new SchemaCompiler($this->connection->dialect()))->alter($definition, $existing));
     }
 
     public function drop(string $table): void
