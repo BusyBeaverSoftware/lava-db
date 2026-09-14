@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\Db\Tests\Live;
 
 use Lava\Db\Problem\BadQuery;
+use Lava\Db\Query\Direction;
 use Lava\Db\Query\Operator;
 use Lava\Db\Schema\Table;
 
@@ -73,6 +74,22 @@ final class AliasAndCountLiveTest extends LiveDatabaseTestCase
         self::assertSame(1, $this->db->count($byAdmins()->limit(5)->offset(1)));
         self::assertSame(3, $this->db->count($this->db->table('articles')->toSelect()));
         self::assertSame(0, $this->db->count($this->db->table('articles')->where('title', Operator::Eq, 'Nothing')));
+    }
+
+    public function testAPageOrderedByAnAliasCountsWhatItFetches(): void
+    {
+        // Lava Notes R3-B7: `id` is a column of both joined tables. fetch()
+        // orders by the alias; the counted subquery, with no alias in it, was
+        // refused as ambiguous.
+        $page = fn () => $this->db->table('articles')
+            ->select(['id' => 'articles.id'], 'writers.email')
+            ->innerJoin('writers', 'writers.id', 'articles.writer_id')
+            ->orderBy('id', Direction::Desc)
+            ->limit(2);
+
+        self::assertCount(2, $this->db->fetch($page()));
+        self::assertSame(2, $this->db->count($page()));
+        self::assertSame(1, $this->db->count($page()->offset(2)));
     }
 
     public function testCountingAWriteIsRefusedBeforeAnythingRuns(): void

@@ -95,7 +95,7 @@ final class SelectAliasAndCountTest extends TestCase
 
         self::assertStringStartsWith('SELECT COUNT(*) AS "count" FROM (SELECT 1 FROM "posts" INNER JOIN "users" ON ', $count->sql);
         self::assertStringContainsString(' WHERE "users"."role" = ?', $count->sql);
-        self::assertStringEndsWith(' ORDER BY "posts"."id" DESC LIMIT 10 OFFSET 20) AS "counted"', $count->sql);
+        self::assertStringEndsWith(' WHERE "users"."role" = ? LIMIT 10 OFFSET 20) AS "counted"', $count->sql);
         self::assertSame(['admin'], $count->bindings);
 
         self::assertSame(
@@ -103,5 +103,29 @@ final class SelectAliasAndCountTest extends TestCase
             (new Compiler(Dialect::Mysql))->count((new QueryBuilder('posts'))->orderBy('id')->toSelect())->sql,
             'An order with no limit or offset decides nothing a count can see.',
         );
+    }
+
+    public function testCountDropsAnOrderEvenWhenALimitPagesIt(): void
+    {
+        // Lava Notes R3-B7: the inner SELECT is `1`, so an order by a select
+        // alias named a column that was not there. An order decides which rows
+        // a page keeps, never how many.
+        $query = (new QueryBuilder('posts'))
+            ->select('posts.title', ['author' => 'users.name'])
+            ->innerJoin('users', 'users.id', 'posts.user_id')
+            ->orderBy('author')
+            ->limit(2)
+            ->toSelect();
+
+        $expected = [
+            'sqlite' => 'SELECT COUNT(*) AS "count" FROM (SELECT 1 FROM "posts" INNER JOIN "users" ON "users"."id" = "posts"."user_id" LIMIT 2) AS "counted"',
+            'mysql' => 'SELECT COUNT(*) AS `count` FROM (SELECT 1 FROM `posts` INNER JOIN `users` ON `users`.`id` = `posts`.`user_id` LIMIT 2) AS `counted`',
+            'pgsql' => 'SELECT COUNT(*) AS "count" FROM (SELECT 1 FROM "posts" INNER JOIN "users" ON "users"."id" = "posts"."user_id" LIMIT 2) AS "counted"',
+        ];
+        foreach ([Dialect::Sqlite, Dialect::Mysql, Dialect::Pgsql] as $dialect) {
+            self::assertSame($expected[$dialect->value], (new Compiler($dialect))->count($query)->sql, $dialect->value);
+        }
+
+        self::assertStringContainsString(' ORDER BY "author" ASC LIMIT 2', (new Compiler(Dialect::Sqlite))->compile($query)->sql, 'fetch() keeps it.');
     }
 }

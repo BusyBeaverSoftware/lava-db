@@ -55,8 +55,13 @@ final class Compiler
      * offset included. The SELECT is wrapped rather than rewritten, so a LIMIT
      * counts the way it pages. Inside, the column list becomes `1`, because a
      * `*` over a join can name one column twice, which MySQL refuses in a
-     * derived table; and the ORDER BY is dropped when there is no limit or
-     * offset for it to decide.
+     * derived table.
+     *
+     * The ORDER BY is always dropped. An order decides WHICH rows a limit and an
+     * offset keep, never how many, and kept, it broke the count: an order by a
+     * select alias names a column the inner `SELECT 1` no longer has, which
+     * MySQL and PostgreSQL refuse and SQLite reads as a string or, for an alias
+     * like `id` over a join, refuses as ambiguous (Lava Notes, R3-B7).
      */
     public function count(SelectQuery $query): Compiled
     {
@@ -90,7 +95,7 @@ final class Compiler
 
         $sql .= $this->where($query->conditions, $bindings);
 
-        if ($query->orders !== [] && (!$counting || $query->limit !== null || $query->offset !== null)) {
+        if ($query->orders !== [] && !$counting) {
             $sql .= ' ORDER BY ' . implode(', ', array_map(
                 fn (OrderBy $order): string => $this->dialect->quote($order->column)
                     . ' ' . $order->direction->value,
