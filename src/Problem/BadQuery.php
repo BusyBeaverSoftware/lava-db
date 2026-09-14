@@ -158,15 +158,71 @@ final class BadQuery extends LavaProblem
         );
     }
 
-    public static function sameResultName(string $name, string $first, string $second): self
+    /**
+     * Two columns of one select() would come back under one name.
+     *
+     * The fix is the reader's own call with one change, so it can be pasted
+     * back as it is: the second column gets an alias no column of the call
+     * already comes back under (`users_id`, else `users_id_2`, …), and every
+     * other argument and alias stays as written. It used to print only the two
+     * columns, with an alias that could already be taken, so following it could
+     * be refused again (Lava Notes, R3-B6). `context.suggested` holds the same
+     * arguments, for a caller that would rather not read them out of the fix.
+     *
+     * @param array{column: string, alias: string|null, argument: int} $first
+     * @param array{column: string, alias: string|null, argument: int} $second
+     * @param list<string|array<mixed>> $arguments select()'s arguments, as given
+     * @param list<string> $taken every name the call's columns come back under
+     */
+    public static function sameResultName(string $name, array $first, array $second, array $arguments, array $taken): self
     {
-        $suggestion = str_contains($second, '.') ? str_replace('.', '_', $second) : $second . '_2';
+        $base = str_replace('.', '_', $second['column']);
+        $lowered = array_map(strtolower(...), $taken);
+        $suggestion = $base;
+        for ($n = 2; in_array(strtolower($suggestion), $lowered, true); $n++) {
+            $suggestion = "{$base}_{$n}";
+        }
+
+        $suggested = $arguments;
+        $entry = $arguments[$second['argument']];
+        if (is_array($entry)) {
+            $renamed = [];
+            foreach ($entry as $alias => $column) {
+                $renamed[$alias === $second['alias'] ? $suggestion : $alias] = $column;
+            }
+            $suggested[$second['argument']] = $renamed;
+        } else {
+            $suggested[$second['argument']] = [$suggestion => $second['column']];
+        }
 
         return new self(
-            "select() would return two columns named '{$name}', '{$first}' and '{$second}', and a row keeps only the last of them.",
-            "Alias one of them: select('{$first}', ['{$suggestion}' => '{$second}']).",
-            ['name' => $name, 'columns' => [$first, $second]],
+            "select() would return two columns named '{$name}', " . self::side($first) . ' and ' . self::side($second)
+                . ', and a row keeps only the last of them.',
+            ($second['alias'] === null ? 'Alias one of them: ' : 'Give one of them another alias: ')
+                . 'select(' . implode(', ', array_map(self::source(...), $suggested)) . ').',
+            ['name' => $name, 'columns' => [$first['column'], $second['column']], 'suggested' => $suggested],
         );
+    }
+
+    /** @param array{column: string, alias: string|null, argument: int} $side */
+    private static function side(array $side): string
+    {
+        return self::source($side['alias'] === null ? $side['column'] : [$side['alias'] => $side['column']]);
+    }
+
+    /** A select() argument written as PHP: `'posts.id'`, `['author' => 'users.name']`. */
+    private static function source(mixed $value): string
+    {
+        if (is_array($value)) {
+            $pairs = [];
+            foreach ($value as $key => $item) {
+                $pairs[] = self::source($key) . ' => ' . self::source($item);
+            }
+
+            return '[' . implode(', ', $pairs) . ']';
+        }
+
+        return is_string($value) ? "'" . addcslashes($value, "'\\") . "'" : var_export($value, true);
     }
 
     public static function writeInRead(string $verb): self

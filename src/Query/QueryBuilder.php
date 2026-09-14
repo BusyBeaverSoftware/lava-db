@@ -77,17 +77,19 @@ final class QueryBuilder implements Statement
         $list = [];
         $aliases = [];
         $names = [];
-        foreach ($columns as $entry) {
+        $arguments = array_values($columns);
+        foreach ($arguments as $argument => $entry) {
             foreach (is_string($entry) ? [[null, $entry]] : self::aliased($entry) as [$alias, $column]) {
                 ColumnName::check($column, 'select()', star: $alias === null);
 
                 $dot = strrpos($column, '.');
                 $name = $alias ?? (str_ends_with($column, '*') ? null : ($dot === false ? $column : substr($column, $dot + 1)));
                 if ($name !== null) {
+                    $side = ['column' => $column, 'alias' => $alias, 'argument' => $argument];
                     if (isset($names[$name])) {
-                        throw BadQuery::sameResultName($name, $names[$name], $column);
+                        throw BadQuery::sameResultName($name, $names[$name], $side, $arguments, self::resultNames($arguments));
                     }
-                    $names[$name] = $column;
+                    $names[$name] = $side;
                 }
 
                 if ($alias !== null) {
@@ -100,6 +102,32 @@ final class QueryBuilder implements Statement
         $this->columns = $list === [] ? ['*'] : $list;
         $this->aliases = $aliases;
         return $this;
+    }
+
+    /**
+     * Every name select()'s arguments come back under, as far as each is a name
+     * at all, so the alias a same-name refusal suggests can avoid every one of
+     * them, the arguments after the clash included. It never throws: an
+     * argument select() has not reached yet may still be refused on its own.
+     *
+     * @param list<string|array<mixed>> $arguments
+     * @return list<string>
+     */
+    private static function resultNames(array $arguments): array
+    {
+        $names = [];
+        foreach ($arguments as $entry) {
+            foreach (is_string($entry) ? [$entry] : $entry as $alias => $column) {
+                if (is_string($alias)) {
+                    $names[] = $alias;
+                } elseif (is_string($column) && !str_ends_with($column, '*')) {
+                    $dot = strrpos($column, '.');
+                    $names[] = $dot === false ? $column : substr($column, $dot + 1);
+                }
+            }
+        }
+
+        return $names;
     }
 
     /**

@@ -59,6 +59,69 @@ final class SelectAliasAndCountTest extends TestCase
         self::assertSame(['posts.*', 'users.id'], (new QueryBuilder('posts'))->select('posts.*', 'users.id')->toSelect()->columns, 'A * is not counted.');
     }
 
+    public function testTheFixIsTheReadersOwnCallWithOneAliasNothingElseUses(): void
+    {
+        // Lava Notes R3-B6: the fix printed two columns and an alias built from
+        // the second, so it dropped the reader's other arguments and could
+        // suggest a name the call already used; following it was refused again.
+        $cases = [
+            'the alias is taken by an earlier alias' => [
+                ['users.id', ['posts_id' => 'posts.user_id'], 'posts.id'],
+                "Alias one of them: select('users.id', ['posts_id' => 'posts.user_id'], ['posts_id_2' => 'posts.id']).",
+            ],
+            'the fix it used to give, followed' => [
+                ['users.id', ['posts_id' => 'posts.user_id'], ['posts_id' => 'posts.id']],
+                "Give one of them another alias: select('users.id', ['posts_id' => 'posts.user_id'], ['posts_id_2' => 'posts.id']).",
+            ],
+            'both sides aliased' => [
+                [['title' => 'posts.title'], ['title' => 'users.name']],
+                "Give one of them another alias: select(['title' => 'posts.title'], ['users_name' => 'users.name']).",
+            ],
+            'the alias is taken by a plain column' => [
+                ['users_id', 'posts.id', 'users.id'],
+                "Alias one of them: select('users_id', 'posts.id', ['users_id_2' => 'users.id']).",
+            ],
+            'the alias is taken by a later argument' => [
+                ['posts.id', 'users.id', ['users_id' => 'comments.user_id']],
+                "Alias one of them: select('posts.id', ['users_id_2' => 'users.id'], ['users_id' => 'comments.user_id']).",
+            ],
+            'an unqualified column' => [
+                [['title' => 'posts.body'], 'title'],
+                "Alias one of them: select(['title' => 'posts.body'], ['title_2' => 'title']).",
+            ],
+            'a taken name in another case' => [
+                ['USERS_ID', 'posts.id', 'users.id'],
+                "Alias one of them: select('USERS_ID', 'posts.id', ['users_id_2' => 'users.id']).",
+            ],
+        ];
+
+        foreach ($cases as $case => [$columns, $fix]) {
+            try {
+                (new QueryBuilder('posts'))->select(...$columns);
+                self::fail("Accepted {$case}.");
+            } catch (BadQuery $problem) {
+                self::assertSame($fix, $problem->fix, $case);
+
+                // The fix, followed, is accepted, and keeps every column.
+                $suggested = $problem->context['suggested'];
+                self::assertIsArray($suggested, $case);
+                $pairs = array_sum(array_map(static fn (string|array $entry): int => is_string($entry) ? 1 : count($entry), $columns));
+                self::assertCount($pairs, (new QueryBuilder('posts'))->select(...$suggested)->toSelect()->columns, $case);
+            }
+        }
+
+        try {
+            (new QueryBuilder('posts'))->select(['title' => 'posts.title'], ['title' => 'users.name']);
+            self::fail('Accepted two aliases alike.');
+        } catch (BadQuery $problem) {
+            self::assertStringContainsString(
+                "two columns named 'title', ['title' => 'posts.title'] and ['title' => 'users.name']",
+                $problem->getMessage(),
+                'An aliased side is named as it was written.',
+            );
+        }
+    }
+
     public function testAnAliasIsOneNameAndWhatItNamesIsAColumn(): void
     {
         $cases = [
