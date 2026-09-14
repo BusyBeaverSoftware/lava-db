@@ -17,6 +17,7 @@ final class SelectQuery extends Query
      * @param list<Condition> $conditions
      * @param list<Join> $joins
      * @param list<OrderBy> $orders
+     * @param array<int, string> $aliases a position in $columns => the alias that column is selected as
      */
     public function __construct(
         string $table,
@@ -26,6 +27,7 @@ final class SelectQuery extends Query
         public readonly array $orders = [],
         public readonly ?int $limit = null,
         public readonly ?int $offset = null,
+        public readonly array $aliases = [],
     ) {
         parent::__construct($table, $conditions);
     }

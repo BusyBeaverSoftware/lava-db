@@ -145,6 +145,39 @@ final class BadQuery extends LavaProblem
         );
     }
 
+    public static function notAnAlias(string|int $alias): self
+    {
+        return new self(
+            is_int($alias)
+                ? "select() was given an array with the key {$alias}. An array in select() maps aliases to columns, so every key is an alias."
+                : "select() was given the alias '{$alias}', which is not one name. An alias is letters, digits and underscores, not starting with a digit, with no dots and no '*'.",
+            is_int($alias)
+                ? "Pass column names as separate arguments, select(...\$names), and aliases as a map: select('posts.id', ['author' => 'users.name'])."
+                : "Write the alias as one name: select(['author' => 'users.name']).",
+            ['alias' => $alias],
+        );
+    }
+
+    public static function sameResultName(string $name, string $first, string $second): self
+    {
+        $suggestion = str_contains($second, '.') ? str_replace('.', '_', $second) : $second . '_2';
+
+        return new self(
+            "select() would return two columns named '{$name}', '{$first}' and '{$second}', and a row keeps only the last of them.",
+            "Alias one of them: select('{$first}', ['{$suggestion}' => '{$second}']).",
+            ['name' => $name, 'columns' => [$first, $second]],
+        );
+    }
+
+    public static function writeInRead(string $verb): self
+    {
+        return new self(
+            "->{$verb}() reads rows, but this query is an INSERT, UPDATE or DELETE.",
+            "Pass the builder before its write terminal, \$db->{$verb}(\$db->table('posts')->where(…)); run a write with run().",
+            ['method' => $verb],
+        );
+    }
+
     public static function readInWrite(string $verb): self
     {
         return new self(

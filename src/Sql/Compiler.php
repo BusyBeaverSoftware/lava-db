@@ -50,12 +50,35 @@ final class Compiler
         };
     }
 
-    private function select(SelectQuery $query): Compiled
+    /**
+     * `COUNT(*)` of the rows a SELECT returns, its joins, conditions, limit and
+     * offset included. The SELECT is wrapped rather than rewritten, so a LIMIT
+     * counts the way it pages. Inside, the column list becomes `1`, because a
+     * `*` over a join can name one column twice, which MySQL refuses in a
+     * derived table; and the ORDER BY is dropped when there is no limit or
+     * offset for it to decide.
+     */
+    public function count(SelectQuery $query): Compiled
+    {
+        $inner = $this->select($query, counting: true);
+
+        return new Compiled(
+            'SELECT COUNT(*) AS ' . $this->dialect->quote('count')
+                . ' FROM (' . $inner->sql . ') AS ' . $this->dialect->quote('counted'),
+            $inner->bindings,
+        );
+    }
+
+    private function select(SelectQuery $query, bool $counting = false): Compiled
     {
         $bindings = [];
-        $columns = array_map($this->dialect->quote(...), $query->columns);
+        $columns = [];
+        foreach ($query->columns as $position => $column) {
+            $alias = $query->aliases[$position] ?? null;
+            $columns[] = $this->dialect->quote($column) . ($alias === null ? '' : ' AS ' . $this->dialect->quote($alias));
+        }
 
-        $sql = 'SELECT ' . implode(', ', $columns) . ' FROM ' . $this->dialect->quote($query->table);
+        $sql = 'SELECT ' . ($counting ? '1' : implode(', ', $columns)) . ' FROM ' . $this->dialect->quote($query->table);
 
         foreach ($query->joins as $join) {
             $sql .= ' ' . $join->type->value
@@ -67,7 +90,7 @@ final class Compiler
 
         $sql .= $this->where($query->conditions, $bindings);
 
-        if ($query->orders !== []) {
+        if ($query->orders !== [] && (!$counting || $query->limit !== null || $query->offset !== null)) {
             $sql .= ' ORDER BY ' . implode(', ', array_map(
                 fn (OrderBy $order): string => $this->dialect->quote($order->column)
                     . ' ' . $order->direction->value,

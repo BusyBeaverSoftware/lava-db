@@ -164,6 +164,36 @@ final class Connection
     }
 
     /**
+     * How many rows a SELECT returns: what `count($db->fetch($query))` would
+     * say, limit and offset included, without fetching them.
+     *
+     * `select('COUNT(*)')` is refused (DECISIONS 264), and this keeps the
+     * commonest aggregate out of raw SQL. The others — `SUM`, `MAX`, a
+     * `GROUP BY` — still go through query().
+     *
+     * @throws BadQuery when the statement is a write
+     * @throws QueryFailed
+     */
+    public function count(Statement $statement): int
+    {
+        $query = $statement->query();
+        if (!$query instanceof SelectQuery) {
+            throw BadQuery::writeInRead('count');
+        }
+
+        // An int from SQLite's and PostgreSQL's drivers, a numeric string from MySQL's.
+        $count = $this->fetchCompiled($this->compiler()->count($query))[0]['count'] ?? 0;
+        if (is_int($count)) {
+            return $count;
+        }
+        if (is_string($count) && ctype_digit($count)) {
+            return (int) $count;
+        }
+
+        throw new \UnexpectedValueException('COUNT(*) came back as ' . get_debug_type($count) . ', not a whole number.');
+    }
+
+    /**
      * Executes a write and returns the number of affected rows.
      *
      * A SELECT is refused rather than executed: `PDO::rowCount()` on a SELECT

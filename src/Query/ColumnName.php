@@ -42,4 +42,19 @@ final class ColumnName
 
         return $name;
     }
+
+    /**
+     * An alias for a selected column: one name, as a column's own last part is
+     * (`author`), never qualified and never `*`.
+     *
+     * @throws BadQuery when the string is not one name
+     */
+    public static function alias(string $alias): string
+    {
+        if (preg_match('/^' . self::SEGMENT . '$/u', $alias) !== 1) {
+            throw BadQuery::notAnAlias($alias);
+        }
+
+        return $alias;
+    }
 }

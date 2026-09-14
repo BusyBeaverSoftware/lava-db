@@ -31,6 +31,9 @@ final class QueryBuilder implements Statement
     /** @var list<string> */
     private array $columns = ['*'];
 
+    /** @var array<int, string> a position in $columns => the alias that column is selected as */
+    private array $aliases = [];
+
     /** @var list<Join> */
     private array $joins = [];
 
@@ -53,20 +56,71 @@ final class QueryBuilder implements Statement
     /**
      * Replaces the column list. Called with no arguments, it selects `*` again.
      *
-     * Column names only — `title`, `posts.title`, `*`, `posts.*`. An aggregate
-     * or an expression is refused rather than quoted: `COUNT(*)` would become
-     * `"COUNT(*)"`, and SQLite answers that with the string itself.
+     * Column names — `title`, `posts.title`, `*`, `posts.*` — and maps from an
+     * alias to a column name, `['author' => 'users.name']`, which compile to
+     * `"users"."name" AS "author"`, in the order given. An aggregate or an
+     * expression is refused rather than quoted: `COUNT(*)` would become
+     * `"COUNT(*)"`, and SQLite answers that with the string itself. Count rows
+     * with {@see \Lava\Db\Connection::count()}.
      *
-     * @throws BadQuery for anything that is not a column name — see {@see ColumnName}
+     * Two columns that would come back under one name are refused as well. PDO
+     * keeps the last of two same-named columns, so `select('posts.id',
+     * 'users.id')` returned one `id`, the user's, and said nothing; alias one of
+     * them. A `*` is not counted: which names it brings is the database's to say.
+     *
+     * @param string|array<mixed> ...$columns column names, and alias => column maps
+     * @throws BadQuery for a column that is not a name, an alias that is not one
+     *         name, or a name two columns would share — see {@see ColumnName}
      */
-    public function select(string ...$columns): self
+    public function select(string|array ...$columns): self
     {
-        foreach ($columns as $column) {
-            ColumnName::check($column, 'select()', star: true);
+        $list = [];
+        $aliases = [];
+        $names = [];
+        foreach ($columns as $entry) {
+            foreach (is_string($entry) ? [[null, $entry]] : self::aliased($entry) as [$alias, $column]) {
+                ColumnName::check($column, 'select()', star: $alias === null);
+
+                $dot = strrpos($column, '.');
+                $name = $alias ?? (str_ends_with($column, '*') ? null : ($dot === false ? $column : substr($column, $dot + 1)));
+                if ($name !== null) {
+                    if (isset($names[$name])) {
+                        throw BadQuery::sameResultName($name, $names[$name], $column);
+                    }
+                    $names[$name] = $column;
+                }
+
+                if ($alias !== null) {
+                    $aliases[count($list)] = $alias;
+                }
+                $list[] = $column;
+            }
         }
 
-        $this->columns = $columns === [] ? ['*'] : array_values($columns);
+        $this->columns = $list === [] ? ['*'] : $list;
+        $this->aliases = $aliases;
         return $this;
+    }
+
+    /**
+     * @param array<mixed> $map alias => column
+     * @return list<array{0: string, 1: string}> [alias, column] pairs
+     * @throws BadQuery for a key that is not an alias or a value that is not a string
+     */
+    private static function aliased(array $map): array
+    {
+        $pairs = [];
+        foreach ($map as $alias => $column) {
+            if (!is_string($alias)) {
+                throw BadQuery::notAnAlias($alias);
+            }
+            if (!is_string($column)) {
+                throw BadQuery::notAColumn(get_debug_type($column), 'select()');
+            }
+            $pairs[] = [ColumnName::alias($alias), $column];
+        }
+
+        return $pairs;
     }
 
     /** @throws BadQuery when the table or either column is not a name — see {@see ColumnName} */
@@ -121,6 +175,7 @@ final class QueryBuilder implements Statement
             $this->orders,
             $this->limit,
             $this->offset,
+            $this->aliases,
         );
     }
 
