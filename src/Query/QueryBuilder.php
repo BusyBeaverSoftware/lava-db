@@ -66,7 +66,12 @@ final class QueryBuilder implements Statement
      * Two columns that would come back under one name are refused as well. PDO
      * keeps the last of two same-named columns, so `select('posts.id',
      * 'users.id')` returned one `id`, the user's, and said nothing; alias one of
-     * them. A `*` is not counted: which names it brings is the database's to say.
+     * them. Two column references alike apart from case are refused too, because
+     * SQLite returns a reference under the name its TABLE declares: both sides of
+     * `select('posts.ID', 'users.id')` came back as `id`. An alias comes back as
+     * written on every engine, so it is compared exactly — `['ID' => 'posts.id']`
+     * beside `users.id` is two columns and is allowed. A `*` is not counted:
+     * which names it brings is the database's to say.
      *
      * @param string|array<mixed> ...$columns column names, and alias => column maps
      * @throws BadQuery for a column that is not a name, an alias that is not one
@@ -85,11 +90,28 @@ final class QueryBuilder implements Statement
                 $dot = strrpos($column, '.');
                 $name = $alias ?? (str_ends_with($column, '*') ? null : ($dot === false ? $column : substr($column, $dot + 1)));
                 if ($name !== null) {
-                    $side = ['column' => $column, 'alias' => $alias, 'argument' => $argument];
-                    if (isset($names[$name])) {
-                        throw BadQuery::sameResultName($name, $names[$name], $side, $arguments, self::resultNames($arguments));
+                    $side = ['column' => $column, 'alias' => $alias, 'argument' => $argument, 'name' => $name];
+
+                    // Grouped by the FOLDED name, because two names alike apart
+                    // from case can still arrive as one (Lava Notes, R3-B6):
+                    // SQLite returns a column reference under the name its table
+                    // declares, not the name the query wrote, so `posts.ID` and
+                    // `users.id` both come back as `id` and a row keeps one.
+                    //
+                    // Which is why the fold alone is not the refusal. An alias
+                    // is quoted and comes back exactly as written on every
+                    // engine, so `['ID' => 'posts.id']` beside `users.id` gives
+                    // `ID` and `id` — two keys, nothing lost — and refusing it
+                    // would refuse a call that works. Two spellings are one
+                    // name only when the database gets to choose both, so a
+                    // folded match is refused between two UNALIASED references,
+                    // and an exact match is refused however it was written.
+                    foreach ($names[strtolower($name)] ?? [] as $earlier) {
+                        if ($earlier['name'] === $name || ($earlier['alias'] === null && $alias === null)) {
+                            throw BadQuery::sameResultName($earlier, $side, $arguments, self::resultNames($arguments));
+                        }
                     }
-                    $names[$name] = $side;
+                    $names[strtolower($name)][] = $side;
                 }
 
                 if ($alias !== null) {

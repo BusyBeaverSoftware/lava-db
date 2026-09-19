@@ -169,12 +169,17 @@ final class BadQuery extends LavaProblem
      * be refused again (Lava Notes, R3-B6). `context.suggested` holds the same
      * arguments, for a caller that would rather not read them out of the fix.
      *
-     * @param array{column: string, alias: string|null, argument: int} $first
-     * @param array{column: string, alias: string|null, argument: int} $second
+     * Two column references that differ only in case are the same clash, because
+     * SQLite returns each under its table's declared name (Lava Notes, R3-B6).
+     * The message then names both spellings rather than claiming one name the
+     * reader never wrote.
+     *
+     * @param array{column: string, alias: string|null, argument: int, name: string} $first
+     * @param array{column: string, alias: string|null, argument: int, name: string} $second
      * @param list<string|array<mixed>> $arguments select()'s arguments, as given
      * @param list<string> $taken every name the call's columns come back under
      */
-    public static function sameResultName(string $name, array $first, array $second, array $arguments, array $taken): self
+    public static function sameResultName(array $first, array $second, array $arguments, array $taken): self
     {
         $base = str_replace('.', '_', $second['column']);
         $lowered = array_map(strtolower(...), $taken);
@@ -195,12 +200,23 @@ final class BadQuery extends LavaProblem
             $suggested[$second['argument']] = [$suggestion => $second['column']];
         }
 
+        $alike = $first['name'] === $second['name'];
+
         return new self(
-            "select() would return two columns named '{$name}', " . self::side($first) . ' and ' . self::side($second)
-                . ', and a row keeps only the last of them.',
+            'select() would return two columns named '
+                . ($alike ? "'{$second['name']}'" : "'{$first['name']}' and '{$second['name']}'")
+                . ', ' . self::side($first) . ' and ' . self::side($second)
+                . ($alike
+                    ? ', and a row keeps only the last of them.'
+                    : ', which a database that folds case returns as one name, keeping only one of them.'),
             ($second['alias'] === null ? 'Alias one of them: ' : 'Give one of them another alias: ')
                 . 'select(' . implode(', ', array_map(self::source(...), $suggested)) . ').',
-            ['name' => $name, 'columns' => [$first['column'], $second['column']], 'suggested' => $suggested],
+            [
+                'name' => $second['name'],
+                'names' => [$first['name'], $second['name']],
+                'columns' => [$first['column'], $second['column']],
+                'suggested' => $suggested,
+            ],
         );
     }
 

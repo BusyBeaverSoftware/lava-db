@@ -92,6 +92,40 @@ final class AliasAndCountLiveTest extends LiveDatabaseTestCase
         self::assertSame(1, $this->db->count($page()->offset(2)));
     }
 
+    public function testTwoColumnReferencesAlikeApartFromCaseLoseAColumnAndAreRefused(): void
+    {
+        // Lava Notes R3-B6. The raw query is the loss itself: SQLite returns a
+        // reference under the name its TABLE declares, so two references that
+        // differ only in case arrive as one column and a row keeps one value.
+        $raw = $this->db->query(
+            'SELECT "articles"."ID", "writers"."id" FROM "articles"'
+            . ' INNER JOIN "writers" ON "writers"."id" = "articles"."writer_id"'
+            . ' ORDER BY "articles"."id" LIMIT 1',
+        );
+        self::assertCount(1, $raw[0], 'Two references, one column back: this is what select() now refuses.');
+        self::assertSame('id', strtolower((string) array_key_first($raw[0])));
+
+        try {
+            $this->db->table('articles')->select('articles.ID', 'writers.id');
+            self::fail('Two column references alike apart from case should be refused.');
+        } catch (BadQuery $problem) {
+            self::assertSame('bad_query', $problem->code());
+            self::assertStringContainsString("'ID' and 'id'", $problem->getMessage());
+            self::assertStringContainsString("['writers_id' => 'writers.id']", $problem->fix);
+        }
+
+        // The same pair with an alias is two columns on this database, which is
+        // why an alias is compared exactly rather than folded.
+        $rows = $this->db->fetch(
+            $this->db->table('articles')
+                ->select(['ID' => 'articles.id'], 'writers.id')
+                ->innerJoin('writers', 'writers.id', 'articles.writer_id')
+                ->orderBy('articles.id')
+                ->limit(1),
+        );
+        self::assertSame(['ID', 'id'], array_keys($rows[0]));
+    }
+
     public function testCountingAWriteIsRefusedBeforeAnythingRuns(): void
     {
         try {

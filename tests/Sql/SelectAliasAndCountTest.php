@@ -59,6 +59,42 @@ final class SelectAliasAndCountTest extends TestCase
         self::assertSame(['posts.*', 'users.id'], (new QueryBuilder('posts'))->select('posts.*', 'users.id')->toSelect()->columns, 'A * is not counted.');
     }
 
+    public function testTwoColumnReferencesAlikeApartFromCaseAreOneNameAndAnAliasIsNot(): void
+    {
+        // Lava Notes R3-B6: names were compared case-sensitively, so this passed
+        // and SQLite — which returns a reference under the name its table
+        // declares, not the name the query wrote — returned one `id`.
+        try {
+            (new QueryBuilder('posts'))->select('posts.ID', 'users.id');
+            self::fail('Accepted two column references alike apart from case.');
+        } catch (BadQuery $problem) {
+            self::assertSame('bad_query', $problem->code());
+            self::assertSame(
+                "select() would return two columns named 'ID' and 'id', 'posts.ID' and 'users.id',"
+                . ' which a database that folds case returns as one name, keeping only one of them.',
+                $problem->getMessage(),
+                'Both spellings are named: neither is a name the reader wrote twice.',
+            );
+            self::assertSame("Alias one of them: select('posts.ID', ['users_id' => 'users.id']).", $problem->fix);
+            self::assertSame(['ID', 'id'], $problem->context['names']);
+        }
+
+        // Accepted, and each for the reason the refusal does not apply: an alias
+        // is quoted and comes back exactly as written on every engine, so only a
+        // clash the DATABASE creates is refused. Verified against SQLite in
+        // Live\AliasAndCountLiveTest.
+        $allowed = [
+            'two references that do not fold alike' => ['posts.ID', 'users.NAME'],
+            'an alias against a reference' => [['ID' => 'posts.id'], 'users.id'],
+            'a reference against an alias' => [['Title' => 'posts.body'], 'posts.title'],
+            'two aliases alike apart from case' => [['n' => 'posts.id'], ['N' => 'users.id']],
+        ];
+
+        foreach ($allowed as $case => $columns) {
+            self::assertCount(2, (new QueryBuilder('posts'))->select(...$columns)->toSelect()->columns, $case);
+        }
+    }
+
     public function testTheFixIsTheReadersOwnCallWithOneAliasNothingElseUses(): void
     {
         // Lava Notes R3-B6: the fix printed two columns and an alias built from
