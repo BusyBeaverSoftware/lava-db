@@ -346,6 +346,57 @@ final class DbCommandsTest extends TestCase
         self::assertSame('batches', $result->context('bad_usage', 'flag'));
     }
 
+    public function testAboutReportsHowManyMigrationsAreWaiting(): void
+    {
+        // Lava Notes R3-G4: `lava about` had no fact a pack holds, so "the code is
+        // deployed and the schema is not" was invisible unless someone ran db:status.
+        $fresh = $this->lava(['about', '--json']);
+
+        self::assertSame(ExitCode::Ok, $fresh->exit, $fresh->stderr);
+        self::assertSame('lava.about/2', $fresh->schema());
+        $pack = self::dbPack($fresh->data());
+        self::assertSame(['pending_migrations' => 2], $pack['facts']);
+        self::assertMatchesRegularExpression('/^\d+\.\d+\.\d+/', (string) $pack['version']);
+
+        self::assertSame(ExitCode::Ok, $this->lava(['db:migrate', '--json'])->exit);
+
+        $migrated = $this->lava(['about', '--json']);
+        self::assertSame(['pending_migrations' => 0], self::dbPack($migrated->data())['facts']);
+    }
+
+    public function testAboutSaysWhyItCannotCountMigrationsInsteadOfFailing(): void
+    {
+        $result = $this->lava(['about', '--json'], ['DATABASE_DSN' => null]);
+
+        // Still a success: `about` is the command someone runs when the app is
+        // already broken, so a pack that cannot answer reports why and the rest
+        // of the report stands.
+        self::assertSame(ExitCode::Ok, $result->exit, $result->stderr);
+        $facts = self::dbPack($result->data())['facts'];
+        self::assertIsArray($facts);
+        self::assertSame('db_not_configured', $facts['error'] ?? null);
+        self::assertIsString($facts['message'] ?? null);
+    }
+
+    /**
+     * lavaphp/db's entry in an `about` payload.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    private static function dbPack(array $data): array
+    {
+        $packs = $data['packs'] ?? null;
+        self::assertIsArray($packs);
+        foreach ($packs as $pack) {
+            if (is_array($pack) && ($pack['package'] ?? null) === 'lavaphp/db') {
+                return $pack;
+            }
+        }
+
+        self::fail('about reported no lavaphp/db pack.');
+    }
+
     public function testWithoutADsnTheCommandsSayWhatToConfigure(): void
     {
         // The pack is enabled and the app is fine; the database is simply not

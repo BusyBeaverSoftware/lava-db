@@ -35,7 +35,7 @@ use Lava\Db\Console\DbStatusCommand;
  * `config/database.php`. A DSN in the environment beats one in the file,
  * because the environment is what a deploy changes.
  */
-final class DbModule implements Module, ProvidesCommands
+final class DbModule implements Module, ProvidesCommands, \Lava\Core\Modules\ProvidesFacts
 {
     public function pack(): PackInfo
     {
@@ -62,6 +62,43 @@ final class DbModule implements Module, ProvidesCommands
         $registry->add(new DbMigrateCommand());
         $registry->add(new DbRollbackCommand());
         $registry->add(new DbNewCommand());
+    }
+
+    /**
+     * How many migrations are waiting, for `lava about` and any page that reads
+     * {@see \Lava\Core\Boot\RuntimeFacts} (Lava Notes, R3-G4).
+     *
+     * It is the one fact about a database worth having beside the PHP facts:
+     * "the code is deployed and the schema is not" explains a class of failure
+     * that no other command reports unless someone thinks to run `db:status`.
+     * The count, not the names — `db:status` lists those, and facts printed
+     * beside every other pack's should stay one line.
+     *
+     * This queries, which is why {@see \Lava\Core\Modules\ProvidesFacts} is
+     * asked when the facts are read rather than at boot. An unreachable or
+     * unconfigured database raises its own LavaProblem here, and `RuntimeFacts`
+     * records it as an `error` fact: `about` still reports everything else,
+     * which is the whole point of the command.
+     *
+     * Every core and pack class this method names is written out in full,
+     * deliberately: an import would move the `Connection` registration below,
+     * and every committed AGENTS.md records that line.
+     *
+     * @return array<string, mixed>
+     */
+    public function facts(\Lava\Core\Boot\App $app): array
+    {
+        $connection = $app->container->get(Connection::class);
+        if (!$connection instanceof Connection) {
+            throw \Lava\Core\Problem\InvalidConfig::wrongService(Connection::class, Connection::class, $connection);
+        }
+
+        $runner = new \Lava\Db\Migration\MigrationRunner(
+            $connection,
+            \Lava\Db\Migration\MigrationFiles::inApp($app->appDir),
+        );
+
+        return ['pending_migrations' => count($runner->pending())];
     }
 
     /**
