@@ -164,6 +164,28 @@ final class QueryBuilderTest extends TestCase
         );
     }
 
+    public function testATableNameIsCheckedLikeEveryOtherIdentifier(): void
+    {
+        // It was the one identifier position with no check at all: a join's
+        // table went through the grammar and the FROM table took any string,
+        // so this compiled (correctly quoted, so never an injection — the
+        // asymmetry was the bug). Security review.
+        foreach (["a\" b'c;--", "users\n", "users\0", 'users; DROP TABLE x', 'LOWER(users)', ''] as $table) {
+            try {
+                new QueryBuilder($table);
+                self::fail("the builder took '" . addcslashes($table, "\0\r\n") . "' as a table");
+            } catch (BadQuery $problem) {
+                self::assertSame('bad_query', $problem->code());
+                self::assertStringContainsString('table()', $problem->getMessage() . ' ' . $problem->fix);
+            }
+        }
+
+        // The grammar every other position uses, unchanged: a qualified name is
+        // still a name, as `innerJoin('main.posts', …)` has been since R2-B8.
+        self::assertSame('users', (new QueryBuilder('users'))->table());
+        self::assertSame('main.posts', (new QueryBuilder('main.posts'))->table());
+    }
+
     public function testANameWithATrailingNewlineIsNotAName(): void
     {
         // PCRE's `$` also matches immediately before a final newline, so

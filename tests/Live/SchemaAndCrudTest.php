@@ -22,6 +22,30 @@ use Lava\Db\Schema\Table;
  */
 final class SchemaAndCrudTest extends LiveDatabaseTestCase
 {
+    public function testTheSchemaDslRefusesATableNameThatIsNotAName(): void
+    {
+        // The DSL took any string, so `drop("a\" b'c;--")` compiled a statement
+        // the query builder would have refused outright (security review). The
+        // refusal happens before the connection is touched.
+        $refusals = [
+            'create' => fn () => $this->db->schema()->create("a\" b'c;--", static fn (Table $t) => $t->id()),
+            'table' => fn () => $this->db->schema()->table("users\n", static fn (Table $t) => $t->id()),
+            'drop' => fn () => $this->db->schema()->drop('users; DROP TABLE x'),
+            'dropIfExists' => fn () => $this->db->schema()->dropIfExists('LOWER(users)'),
+            'dropIndex' => fn () => $this->db->schema()->dropIndex("users\0", 'idx'),
+        ];
+
+        foreach ($refusals as $call => $attempt) {
+            try {
+                $attempt();
+                self::fail("schema()->{$call}() took a name that is not a name");
+            } catch (LavaProblem $problem) {
+                self::assertSame('bad_schema', $problem->code(), $call);
+                self::assertSame($call, $problem->context['call'] ?? null, $call);
+            }
+        }
+    }
+
     public function testTheSchemaDslCreatesWhatTheSnapshotReadsBack(): void
     {
         $this->remember('users');

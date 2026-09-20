@@ -6,6 +6,7 @@ namespace Lava\Db\Schema;
 
 use Lava\Db\Connection;
 use Lava\Db\Problem\BadSchema;
+use Lava\Db\Query\ColumnName;
 use Lava\Db\Sql\SchemaCompiler;
 
 /**
@@ -32,7 +33,7 @@ final class Schema
      */
     public function create(string $table, \Closure $define): void
     {
-        $definition = $this->describe($table, $define);
+        $definition = $this->describe($this->name($table, 'create'), $define);
         $this->checkReferences($definition);
 
         $this->run((new SchemaCompiler($this->connection->dialect()))->create($definition));
@@ -49,6 +50,7 @@ final class Schema
      */
     public function table(string $table, \Closure $define): void
     {
+        $table = $this->name($table, 'table');
         $definition = $this->describe($table, $define);
         $this->checkReferences($definition);
 
@@ -61,12 +63,14 @@ final class Schema
 
     public function drop(string $table): void
     {
+        $table = $this->name($table, 'drop');
         $this->connection->execute((new SchemaCompiler($this->connection->dialect()))->dropTable($table));
     }
 
     /** For migrations that must be re-runnable — `down()` usually wants this one. */
     public function dropIfExists(string $table): void
     {
+        $table = $this->name($table, 'dropIfExists');
         $this->connection->execute((new SchemaCompiler($this->connection->dialect()))->dropTable($table, true));
     }
 
@@ -85,6 +89,7 @@ final class Schema
      */
     public function dropIndex(string $table, string $name): void
     {
+        $table = $this->name($table, 'dropIndex');
         $indexes = array_keys(SchemaSnapshot::of($this->connection)->indexes($table));
         if (!in_array($name, $indexes, true)) {
             throw BadSchema::unknownIndex($table, $name, $indexes);
@@ -107,6 +112,25 @@ final class Schema
     /**
      * @param \Closure(Table): void $define
      */
+    /**
+     * The table name, checked like every other identifier position.
+     *
+     * This was the one position that took any string at all, while a join's
+     * table went through the builder's grammar — so `drop("a\" b'c;--")`
+     * compiled a statement the builder would have refused. The quoting held, so
+     * this was never an injection; the asymmetry was the bug (security review).
+     *
+     * @throws BadSchema when the string is not a table name
+     */
+    private function name(string $table, string $call): string
+    {
+        if (!ColumnName::isName($table)) {
+            throw BadSchema::notATableName($table, $call);
+        }
+
+        return $table;
+    }
+
     private function describe(string $table, \Closure $define): Table
     {
         $definition = new Table($table);

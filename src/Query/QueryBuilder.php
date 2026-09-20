@@ -44,8 +44,23 @@ final class QueryBuilder implements Statement
 
     private ?int $offset = null;
 
-    public function __construct(private readonly string $table)
+    private readonly string $table;
+
+    /**
+     * The table a statement reads or writes, checked like every other
+     * identifier position.
+     *
+     * It was the one that was not: a join's table went through
+     * {@see ColumnName}, and this one took any string at all — so
+     * `table("a\" b'c;--")` compiled, and `table('main.sqlite_master')` read the
+     * catalogue. The quoting held either way, so this was never an injection;
+     * the asymmetry was the bug, because an app that learned to validate its
+     * sort column had no signal that its table name was treated differently
+     * (security review).
+     */
+    public function __construct(string $table)
     {
+        $this->table = ColumnName::check($table, 'table()');
     }
 
     public function table(): string

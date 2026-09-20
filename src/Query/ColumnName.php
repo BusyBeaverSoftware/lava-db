@@ -32,15 +32,30 @@ final class ColumnName
      */
     public static function check(string $name, string $call, bool $star = false): string
     {
-        $last = $star ? '(?:' . self::SEGMENT . '|\*)' : self::SEGMENT;
-
-        // `u`, so a letter is a letter in any script; a string that is not
-        // valid UTF-8 fails to match and is refused like any other non-name.
-        if (preg_match('/^(?:' . self::SEGMENT . '\.){0,2}' . $last . '$/uD', $name) !== 1) {
+        if (!self::isName($name, $star)) {
             throw BadQuery::notAColumn($name, $call);
         }
 
         return $name;
+    }
+
+    /**
+     * Whether a string is a name by this grammar, without deciding which
+     * problem the caller should raise.
+     *
+     * The schema DSL speaks {@see \Lava\Db\Problem\BadSchema} and the builder
+     * speaks {@see BadQuery}; both mean the same thing by "a name", and one
+     * grammar in one place is how the two stay agreed.
+     *
+     * @param bool $star whether `*` and `posts.*` are names here, as they are in `select()`
+     */
+    public static function isName(string $name, bool $star = false): bool
+    {
+        $last = $star ? '(?:' . self::SEGMENT . '|\*)' : self::SEGMENT;
+
+        // `u`, so a letter is a letter in any script; a string that is not
+        // valid UTF-8 fails to match and is refused like any other non-name.
+        return preg_match('/^(?:' . self::SEGMENT . '\.){0,2}' . $last . '$/uD', $name) === 1;
     }
 
     /**

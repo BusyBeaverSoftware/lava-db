@@ -28,6 +28,26 @@ final class BadSchema extends LavaProblem
         );
     }
 
+    /**
+     * The schema DSL was given a table name that is not a name.
+     *
+     * Every other identifier position in the pack went through the builder's
+     * grammar; the table did not, so `drop("a\" b'c;--")` compiled a (correctly
+     * quoted) statement the builder would have refused outright. Quoting held
+     * either way — this closes the asymmetry, not an injection (security
+     * review).
+     */
+    public static function notATableName(string $table, string $call): self
+    {
+        return new self(
+            "{$call} was given '{$table}', which is not a table name. A name is letters, digits and "
+                . "underscores, not starting with a digit, optionally qualified ('posts', 'main.posts').",
+            "Pass the table's own name: \$schema->{$call}('posts', …). A name built from input belongs "
+                . 'in an allowlist your code owns — an identifier is code, not data.',
+            ['table' => $table, 'call' => $call],
+        );
+    }
+
     public static function emptyColumnName(string $table): self
     {
         return new self(
