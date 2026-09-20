@@ -53,7 +53,7 @@ final class DbRollbackCommand extends DbCommand
         // PHP_INT_MAX) would silently pick a different amount of undo than
         // the caller asked for, on the one operation where that is hardest to
         // notice and most expensive to get wrong.
-        if (preg_match('/^[1-9][0-9]*$/', $raw) !== 1) {
+        if (preg_match('/^[1-9][0-9]*$/D', $raw) !== 1) {
             return BadUsage::invalid('batches', $raw, 'a positive whole number, e.g. --batches=2', $this->usage());
         }
 

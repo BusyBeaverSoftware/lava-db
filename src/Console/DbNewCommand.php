@@ -167,7 +167,7 @@ final class DbNewCommand extends DbCommand
     {
         $snake = strtolower((string) preg_replace('/(?<=[a-z0-9])([A-Z])/', '_$1', trim($raw)));
 
-        return preg_match('/^[a-z][a-z0-9_]*$/', $snake) === 1 ? $snake : null;
+        return preg_match('/^[a-z][a-z0-9_]*$/D', $snake) === 1 ? $snake : null;
     }
 
     /**
@@ -182,7 +182,7 @@ final class DbNewCommand extends DbCommand
      */
     private static function tableFor(string $description): ?string
     {
-        if (preg_match('/^create_([a-z][a-z0-9_]*)_table$/', $description, $matches) !== 1) {
+        if (preg_match('/^create_([a-z][a-z0-9_]*)_table$/D', $description, $matches) !== 1) {
             return null;
         }
 

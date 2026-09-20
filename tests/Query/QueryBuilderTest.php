@@ -164,6 +164,32 @@ final class QueryBuilderTest extends TestCase
         );
     }
 
+    public function testANameWithATrailingNewlineIsNotAName(): void
+    {
+        // PCRE's `$` also matches immediately before a final newline, so
+        // `"owner\n"` passed the check everywhere a name is taken. It is still
+        // quoted, so it was never an injection — but on SQLite an unresolvable
+        // quoted identifier becomes the STRING of its own text, so
+        // `where("owner\n", Eq, $x)` was a silently constant term, and an
+        // authorisation filter written that way failed open or closed by
+        // accident of its polarity (security review).
+        foreach (["owner\n", "owner\r\n", "main.posts.title\n"] as $name) {
+            try {
+                (new QueryBuilder('users'))->where($name, Operator::Eq, 'x');
+                self::fail("the builder took '" . addcslashes($name, "\r\n") . "' as a name");
+            } catch (BadQuery $problem) {
+                self::assertSame('bad_query', $problem->code());
+            }
+        }
+
+        try {
+            (new QueryBuilder('users'))->select(["author\n" => 'users.name']);
+            self::fail('the builder took an alias with a trailing newline');
+        } catch (BadQuery $problem) {
+            self::assertSame('bad_query', $problem->code());
+        }
+    }
+
     /**
      * @param \Closure(QueryBuilder): void $build
      */

@@ -25,7 +25,7 @@ final class MigrationFiles
     public const DIRECTORY = 'app/Database/Migrations';
 
     /** `<YYYY_MM_DD_HHMMSS>_<snake_case_description>` — the name, without `.php`. */
-    private const NAME = '/^\d{4}_\d{2}_\d{2}_\d{6}_[a-z0-9_]+$/';
+    private const NAME = '/^\d{4}_\d{2}_\d{2}_\d{6}_[a-z0-9_]+$/D';
 
     /** @var array<string, Migration>|null loaded lazily, then reused — a file is `require`d once */
     private ?array $loaded = null;

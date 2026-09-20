@@ -36,7 +36,7 @@ final class ColumnName
 
         // `u`, so a letter is a letter in any script; a string that is not
         // valid UTF-8 fails to match and is refused like any other non-name.
-        if (preg_match('/^(?:' . self::SEGMENT . '\.){0,2}' . $last . '$/u', $name) !== 1) {
+        if (preg_match('/^(?:' . self::SEGMENT . '\.){0,2}' . $last . '$/uD', $name) !== 1) {
             throw BadQuery::notAColumn($name, $call);
         }
 
@@ -51,7 +51,7 @@ final class ColumnName
      */
     public static function alias(string $alias): string
     {
-        if (preg_match('/^' . self::SEGMENT . '$/u', $alias) !== 1) {
+        if (preg_match('/^' . self::SEGMENT . '$/uD', $alias) !== 1) {
             throw BadQuery::notAnAlias($alias);
         }
 
