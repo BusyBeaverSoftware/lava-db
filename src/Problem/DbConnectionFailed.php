@@ -28,10 +28,18 @@ final class DbConnectionFailed extends LavaProblem
         $scheme = $scheme === false ? '' : $scheme;
 
         return new self(
-            "Could not connect to the {$scheme} database: " . self::redact($previous->getMessage()),
-            'Check the DSN and that the database exists and is reachable. Credentials come from '
+            "Could not connect to the {$scheme} database.",
+            'Read `driver_message` in the context for what the driver reported, then check the DSN and '
+            . 'that the database exists and is reachable. Credentials come from '
             . 'DATABASE_USER/DATABASE_PASSWORD or the same keys in config/database.php.',
-            ['scheme' => $scheme, 'dsn' => self::redact($dsn)],
+            [
+                // Beside the DSN, for the same reason the DSN is here: production
+                // withholds a 5xx's context but keeps its message, and a driver's
+                // sentence can name a host, a database or a user (security review).
+                'driver_message' => self::redact($previous->getMessage()),
+                'scheme' => $scheme,
+                'dsn' => self::redact($dsn),
+            ],
             null,
             $previous,
         );

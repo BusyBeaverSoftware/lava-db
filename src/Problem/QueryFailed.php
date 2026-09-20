@@ -27,10 +27,19 @@ final class QueryFailed extends LavaProblem
     public static function of(Compiled $statement, \PDOException $previous): self
     {
         return new self(
-            'The database rejected a statement: ' . DbConnectionFailed::redact($previous->getMessage()),
-            'Check the column and table names against the schema (`lava db:status` lists the tables), '
-            . 'then re-run. A constraint violation means the data, not the query, is at fault.',
+            'The database rejected a statement.',
+            'Read `driver_message` in the context for what the database objected to, and check the column '
+            . 'and table names against the schema (`lava db:status` lists the tables). A constraint '
+            . 'violation means the data, not the query, is at fault.',
             [
+                // The driver's own sentence belongs here, not in the message.
+                // Production withholds a 5xx's context but keeps its message, so
+                // `no such table: admin_sessions` and `UNIQUE constraint failed:
+                // users.email` were the default public 500 body — handing an
+                // unauthenticated caller the schema, and on MySQL the offending
+                // VALUE (`Duplicate entry 'alice@example.com' …`). Dev loses
+                // nothing: the context is rendered there (security review).
+                'driver_message' => DbConnectionFailed::redact($previous->getMessage()),
                 'sql' => $statement->sql,
                 'bindings' => $statement->bindings,
                 'sqlstate' => (string) $previous->getCode(),

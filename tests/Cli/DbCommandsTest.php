@@ -437,9 +437,11 @@ final class DbCommandsTest extends TestCase
         );
         // The driver's own words survive the redaction: an agent needs to know
         // the file could not be opened, not merely that something went wrong.
+        // They travel in the context, which the CLI prints and production
+        // withholds from an HTTP client (security review).
         self::assertStringContainsString(
             'unable to open database file',
-            (string) $result->problem('db_connection_failed')['problem'],
+            (string) $result->context('db_connection_failed', 'driver_message'),
         );
     }
 

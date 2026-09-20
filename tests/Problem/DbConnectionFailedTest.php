@@ -53,7 +53,7 @@ final class DbConnectionFailedTest extends TestCase
         $problem = DbConnectionFailed::of('host=db;dbname=app', new \PDOException('nope'));
 
         self::assertSame('', $problem->context['scheme']);
-        self::assertStringContainsString('nope', $problem->getMessage());
+        self::assertStringContainsString('nope', (string) $problem->context['driver_message']);
     }
 
     /**
@@ -121,10 +121,14 @@ final class DbConnectionFailedTest extends TestCase
             new \PDOException('SQLSTATE[HY000] [1045] Access denied for user (using password=' . self::SECRET . ')'),
         );
 
+        // The driver's sentence lives in the context now, where production
+        // withholds it — the message never carried the credential either way.
+        $driver = (string) $problem->context['driver_message'];
+        self::assertStringNotContainsString(self::SECRET, $driver);
         self::assertStringNotContainsString(self::SECRET, $problem->getMessage());
-        self::assertStringContainsString('password=***', $problem->getMessage());
+        self::assertStringContainsString('password=***', $driver);
         // Masking the credential must not swallow the diagnosis around it.
-        self::assertStringContainsString('Access denied for user', $problem->getMessage());
+        self::assertStringContainsString('Access denied for user', $driver);
     }
 
     /**
@@ -204,7 +208,12 @@ final class DbConnectionFailedTest extends TestCase
         self::assertSame('fatal', $json['severity']);
         self::assertSame(500, $problem->httpStatus());
         self::assertNull($json['source']);
-        self::assertSame(['scheme', 'dsn'], array_keys($json['context']));
+        self::assertSame(['driver_message', 'scheme', 'dsn'], array_keys($json['context']));
+        // The sentence says what happened without quoting the driver, so a
+        // production 500 — which keeps the message and withholds the context —
+        // no longer publishes what the database said (security review).
+        self::assertSame('Could not connect to the mysql database.', $json['problem']);
+        self::assertStringContainsString('Connection refused', (string) $json['context']['driver_message']);
         self::assertSame($previous, $problem->getPrevious());
         // The fix names where the credentials come from, which is the part an
         // agent cannot guess from the driver's error.
