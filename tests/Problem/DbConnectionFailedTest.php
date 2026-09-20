@@ -73,6 +73,34 @@ final class DbConnectionFailedTest extends TestCase
     }
 
     /**
+     * The other spellings a DSN uses for the same field. A security review
+     * found `pass=` and `secret=` going through untouched, which is the shape
+     * a driver option list tends to have.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function keyValueSpellings(): iterable
+    {
+        yield 'pass' => ['mysql:host=db;pass=' . self::SECRET];
+
+        yield 'secret' => ['mysql:host=db;secret=' . self::SECRET];
+
+        yield 'passwd' => ['mysql:host=db;passwd=' . self::SECRET];
+
+        yield 'pwd, upper case' => ['mysql:host=db;PWD=' . self::SECRET];
+    }
+
+    #[DataProvider('keyValueSpellings')]
+    public function testEverySpellingOfThePasswordKeyIsMasked(string $dsn): void
+    {
+        $redacted = DbConnectionFailed::redact($dsn);
+
+        self::assertStringNotContainsString(self::SECRET, $redacted);
+        self::assertStringContainsString('***', $redacted);
+        self::assertStringContainsString('host=db', $redacted);
+    }
+
+    /**
      * The docblock's second half, and the reason it is a posture rather than a
      * response: the driver's message is not ours, so a driver that echoes the
      * connection string — or the credential it was handed — must not be trusted
@@ -117,6 +145,10 @@ final class DbConnectionFailedTest extends TestCase
         yield 'an untrusted message containing a URL' => ['failed to open mysql://app:' . self::SECRET . '@db.internal/app'];
 
         yield 'a URL with no port or path' => ['postgres://app:' . self::SECRET . '@db.internal'];
+
+        // A security review: the match stopped at the first `@`, so a password
+        // containing one had its tail printed.
+        yield 'a password containing an @' => ['mysql://app:p@' . self::SECRET . '@db.internal/app'];
     }
 
     #[DataProvider('urlShapedTexts')]

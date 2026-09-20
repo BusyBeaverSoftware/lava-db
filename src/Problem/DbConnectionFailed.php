@@ -58,9 +58,12 @@ final class DbConnectionFailed extends LavaProblem
      */
     public static function redact(string $text): string
     {
-        $text = (string) preg_replace('/(password|passwd|pwd)\s*=\s*[^;\s]*/i', '$1=***', $text);
+        $text = (string) preg_replace('/(password|passwd|pwd|pass|secret)\s*=\s*[^;\s]*/i', '$1=***', $text);
 
-        return (string) preg_replace('#(://[^:/@\s]*:)[^@\s]*(?=@)#', '$1***', $text);
+        // Up to the LAST `@` before the path, not the first: a password may
+        // contain one, and stopping at the first left everything after it —
+        // `://user:p@ssw0rd@host` used to mask `p` and print the rest.
+        return (string) preg_replace('#(://[^:/@\s]*:)[^\s/]*(?=@)#', '$1***', $text);
     }
 
     public function code(): string
