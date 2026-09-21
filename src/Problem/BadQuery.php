@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Lava\Db\Problem;
 
 use Lava\Core\Problem\LavaProblem;
+use Lava\Db\Query\ColumnName;
 use Lava\Db\Query\Operator;
 
 /**
@@ -108,11 +109,15 @@ final class BadQuery extends LavaProblem
     {
         return new self(
             "Refusing to build {$verb} on '{$table}' with no WHERE clause: it would affect every row in the table.",
-            // `var_export`, not interpolation: the table reaches here from the
-            // caller, and a `fix` is meant to be pasted, so it is rendered as a
-            // PHP string literal rather than dropped into one (security review).
+            // The table reaches here from the caller, and a `fix` is an
+            // imperative someone pastes — so a name that is not an identifier
+            // is not written into a runnable statement at all. `var_export`
+            // alone would make it a safe PHP string and leave the SQL inside it
+            // saying whatever the name says (security review, database 6).
             'Add ->where(...), or if every row really is the target, say so: ->whereRaw(\'1 = 1\'), '
-            . 'or run the statement directly with $db->statement(' . var_export("{$verb} {$table}", true) . ').',
+            . (ColumnName::isName($table)
+                ? "or run the statement directly with \$db->statement('{$verb} {$table}')."
+                : 'or run the statement yourself — this table\'s name is not an identifier, so it is in the context rather than in this sentence.'),
             ['statement' => $verb, 'table' => $table],
         );
     }

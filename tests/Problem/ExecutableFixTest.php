@@ -38,14 +38,20 @@ final class ExecutableFixTest extends TestCase
         self::assertStringNotContainsString(';', $statement);
     }
 
-    public function testATableNameIsRenderedAsALiteralRatherThanInterpolated(): void
+    public function testATableNameThatIsNotAnIdentifierStaysOutOfTheRunnableHalf(): void
     {
-        $fix = BadQuery::unbounded('DELETE', "docs'); DROP TABLE users; --")->fix;
+        $hostile = BadQuery::unbounded('DELETE', "docs'); DROP TABLE users; --")->fix;
 
-        // var_export escapes the quote, so the payload cannot close the string
-        // it is inside and become a second statement.
-        self::assertStringContainsString("\\'", $fix);
-        self::assertStringNotContainsString("statement('DELETE docs');", $fix);
+        // Escaping it as a PHP string was not enough: the SQL inside that string
+        // still said whatever the name said, and the fix invites the reader to
+        // run it. A name that is not an identifier is not written here at all.
+        self::assertStringNotContainsString('DROP TABLE users', $hostile);
+        self::assertStringNotContainsString('docs', $hostile);
+        self::assertStringContainsString('in the context', $hostile);
+
+        // An ordinary table name still gets the statement it can paste.
+        $ordinary = BadQuery::unbounded('DELETE', 'docs')->fix;
+        self::assertStringContainsString("\$db->statement('DELETE docs')", $ordinary);
     }
 
     public function testTheHostileNameIsStillAvailableWhereItIsData(): void
