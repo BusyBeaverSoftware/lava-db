@@ -45,9 +45,15 @@ final class MigrationFailed extends LavaProblem
 
         return new self(
             "The migration repository records '{$name}' (batch {$batch}) as applied, but its file is missing.",
-            "Restore {$expected}, or if the change is no longer wanted, remove the row yourself: "
-            . "DELETE FROM " . \Lava\Db\Migration\MigrationRunner::TABLE . " WHERE name = '{$name}' — then roll back "
-            . 'the batches above it by hand.',
+            // The name is read out of the migrations table, so it is data this
+            // pack does not control — and a `fix` in this framework is an
+            // imperative someone pastes. Interpolating it into a runnable
+            // statement made `x'; DROP TABLE users; --` a copy-pasteable
+            // command; a placeholder says the same thing and cannot (security
+            // review). The value itself is in `context.migration`.
+            "Restore {$expected}, or if the change is no longer wanted, remove the row yourself — "
+            . 'DELETE FROM ' . \Lava\Db\Migration\MigrationRunner::TABLE . ' WHERE name = ?, binding the '
+            . 'name from `migration` in this problem\'s context — then roll back the batches above it by hand.',
             ['migration' => $name, 'batch' => $batch, 'expected_file' => $expected],
         );
     }

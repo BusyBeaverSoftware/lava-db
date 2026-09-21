@@ -108,7 +108,11 @@ final class BadQuery extends LavaProblem
     {
         return new self(
             "Refusing to build {$verb} on '{$table}' with no WHERE clause: it would affect every row in the table.",
-            "Add ->where(...), or if every row really is the target, say so: ->whereRaw('1 = 1'), or run the statement directly with \$db->statement('{$verb} {$table}').",
+            // `var_export`, not interpolation: the table reaches here from the
+            // caller, and a `fix` is meant to be pasted, so it is rendered as a
+            // PHP string literal rather than dropped into one (security review).
+            'Add ->where(...), or if every row really is the target, say so: ->whereRaw(\'1 = 1\'), '
+            . 'or run the statement directly with $db->statement(' . var_export("{$verb} {$table}", true) . ').',
             ['statement' => $verb, 'table' => $table],
         );
     }

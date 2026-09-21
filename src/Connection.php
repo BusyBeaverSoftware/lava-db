@@ -59,6 +59,36 @@ final class Connection
         $this->options = $options;
     }
 
+    /**
+     * The options a connection is opened with: the app's, over the pack's
+     * defaults, with one key the app does not get to set.
+     *
+     * Emulated prepares rewrite placeholders into literals inside the driver,
+     * which is the one way a bound value can still end up as SQL text. "Off,
+     * always" has to mean it, and it did not: options are merged with `+`,
+     * which keeps the LEFT key, so an app that passed
+     * `ATTR_EMULATE_PREPARES => true` — the line copied out of a Laravel or
+     * Doctrine snippet for MySQL buffering — silently turned off the guarantee
+     * this pack states as its own (security review). Everything else stays the
+     * app's to choose, including the error mode and the fetch mode.
+     *
+     * A pure function so the rule can be asserted without a driver: pdo_sqlite
+     * refuses to report this attribute at all.
+     *
+     * @param array<int, mixed> $options the app's driver options
+     * @return array<int, mixed>
+     */
+    public static function driverOptions(array $options): array
+    {
+        $merged = $options + [
+            \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+        ];
+        $merged[\PDO::ATTR_EMULATE_PREPARES] = false;
+
+        return $merged;
+    }
+
     /** The dialect this connection's DSN targets. */
     public function dialect(): Dialect
     {
@@ -83,14 +113,7 @@ final class Connection
         $dialect = Dialect::fromDsn($dsn);
 
         try {
-            $pdo = new \PDO($dsn, $this->user, $this->password, $this->options + [
-                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
-                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
-                // Emulated prepares rewrite placeholders into literals inside
-                // the driver, which is the one way a bound value can still end
-                // up as SQL text. Off, always.
-                \PDO::ATTR_EMULATE_PREPARES => false,
-            ]);
+            $pdo = new \PDO($dsn, $this->user, $this->password, self::driverOptions($this->options));
         } catch (\PDOException $previous) {
             throw DbConnectionFailed::of($dsn, $previous);
         }
