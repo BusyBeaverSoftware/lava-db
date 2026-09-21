@@ -245,8 +245,6 @@ final class SchemaCompilerTest extends TestCase
             'float' => [Dialect::Sqlite, 1.5, '1.5'],
             'string' => [Dialect::Sqlite, 'hello', "'hello'"],
             'a quote is doubled' => [Dialect::Sqlite, "O'Brien", "'O''Brien'"],
-            'a backslash is ordinary on sqlite' => [Dialect::Sqlite, 'C:\\path', "'C:\\path'"],
-            'a backslash is escaped on mysql' => [Dialect::Mysql, 'C:\\path', "'C:\\\\path'"],
             'a quote is doubled on mysql too' => [Dialect::Mysql, "O'Brien", "'O''Brien'"],
             'true on postgres' => [Dialect::Pgsql, true, 'TRUE'],
             'false on postgres' => [Dialect::Pgsql, false, 'FALSE'],
@@ -259,6 +257,35 @@ final class SchemaCompilerTest extends TestCase
     public function testAValueRendersAsItsLiteral(Dialect $dialect, mixed $value, string $expected): void
     {
         self::assertSame($expected, self::compiler($dialect)->literal($value));
+    }
+
+    /** @return array<string, array{Dialect}> */
+    public static function dialects(): array
+    {
+        return [
+            'sqlite' => [Dialect::Sqlite],
+            'mysql' => [Dialect::Mysql],
+            'postgres' => [Dialect::Pgsql],
+        ];
+    }
+
+    #[DataProvider('dialects')]
+    public function testADefaultHoldingABackslashIsRefusedRatherThanEscaped(Dialect $dialect): void
+    {
+        // Escaping it is the unsafe part: doubling for MySQL breaks under a
+        // GBK/BIG5/SJIS connection charset, where `BF 5C` is one character and
+        // the backslash we add escapes the closing quote; not doubling for
+        // PostgreSQL is right only while standard_conforming_strings is on.
+        // Neither is knowable from the compiler, so the value is refused and
+        // defaultExpression() is named as the deliberate way (security review).
+        try {
+            self::compiler($dialect)->literal('C:\\path');
+            self::fail("{$dialect->value} rendered a backslash as a literal");
+        } catch (BadSchema $problem) {
+            self::assertSame('bad_schema', $problem->code());
+            self::assertStringContainsString('defaultExpression', $problem->fix);
+            self::assertSame('C:\\path', $problem->context['value']);
+        }
     }
 
     public function testADateTimeAndABackedEnumRenderAsTheirValue(): void

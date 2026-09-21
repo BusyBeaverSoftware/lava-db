@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lava\Db\Sql;
 
+use Lava\Db\Problem\BadSchema;
 use Lava\Db\Problem\UnsupportedDialect;
 
 /**
@@ -102,21 +103,30 @@ enum Dialect: string
      * thing, so a column default has to be spelled out. Everything else goes
      * through a placeholder.
      *
-     * The escaping is dialect-specific rather than universal because the two
-     * rules disagree. Standard SQL (SQLite, PostgreSQL with the default
-     * `standard_conforming_strings`) treats a backslash as an ordinary
-     * character, so doubling the quote is the complete answer. MySQL instead
-     * treats backslash as an escape character by default, so a lone trailing
-     * backslash would escape the closing quote and let the rest of the
-     * string become SQL — there, backslashes must be doubled too.
+     * Doubling the quote is the whole of the escaping, and it is the same on
+     * all three dialects. The backslash — which used to be doubled for MySQL
+     * and left alone elsewhere — is refused instead, because whether it is an
+     * escape character is a property of the SERVER (MySQL's default, and
+     * PostgreSQL's `standard_conforming_strings`) and of the connection
+     * charset, none of which the compiler can see. See {@see escapeString()}.
      */
     public function escapeString(string $value): string
     {
-        $escaped = $this === self::Mysql
-            ? str_replace(['\\', "'"], ['\\\\', "''"], $value)
-            : str_replace("'", "''", $value);
+        // A backslash is refused rather than escaped, because escaping it is
+        // exactly what is unsafe. Doubling `\` on MySQL turns `BF 5C` — one
+        // character under a GBK/BIG5/SJIS connection charset — into that
+        // character followed by a lone `\`, which escapes the closing quote and
+        // lets the literal run on into the statement: the classic multibyte
+        // break-out. On PostgreSQL the opposite assumption is baked in, since
+        // not doubling is correct only while `standard_conforming_strings` is
+        // on. Neither assumption is checkable from here, and a column default
+        // holding a backslash is rare enough that refusing it costs a migration
+        // one call to `defaultExpression()` (security review).
+        if (str_contains($value, '\\')) {
+            throw BadSchema::unsafeDefault($value);
+        }
 
-        return "'" . $escaped . "'";
+        return "'" . str_replace("'", "''", $value) . "'";
     }
 
     private function wrap(string $identifier): string

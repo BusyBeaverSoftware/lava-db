@@ -150,6 +150,27 @@ final class BadSchema extends LavaProblem
         );
     }
 
+    /**
+     * A string default holding a backslash, which cannot be escaped safely for
+     * every dialect at once.
+     *
+     * Escaping is the unsafe part: doubling the backslash for MySQL breaks
+     * under a multibyte connection charset, and not doubling it for PostgreSQL
+     * is correct only while `standard_conforming_strings` is on. Neither is
+     * knowable from the compiler, so the value is refused and the deliberate
+     * escape hatch is named (security review).
+     */
+    public static function unsafeDefault(string $value): self
+    {
+        return new self(
+            'A default value holding a backslash cannot be written as a literal that means the same thing '
+                . 'on every dialect.',
+            "Drop the backslash, or write the default as SQL yourself with ->defaultExpression('…'), which "
+                . 'says you have checked what the target database will make of it.',
+            ['value' => $value],
+        );
+    }
+
     public static function notALiteral(mixed $value): self
     {
         return new self(
